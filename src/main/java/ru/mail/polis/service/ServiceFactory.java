@@ -18,6 +18,8 @@ package ru.mail.polis.service;
 
 import java.io.IOException;
 
+import one.nio.http.HttpServerConfig;
+import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
@@ -53,6 +55,10 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Port out of range");
         }
 
-        throw new IllegalStateException();
+        final var acceptor = new AcceptorConfig();
+        final var config = new HttpServerConfig();
+        acceptor.port = port;
+        config.acceptors = new AcceptorConfig[]{acceptor};
+        return new ServiceImpl(config, dao);
     }
 }
