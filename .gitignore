@@ -12,6 +12,7 @@
 !build.gradle.kts
 !.travis.yml
 !settings.gradle
+!gradle/wrapper/*
 
 # ...even if they are in subdirectories
 !*/
