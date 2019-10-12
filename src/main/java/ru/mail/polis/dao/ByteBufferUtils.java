@@ -36,7 +36,7 @@ public final class ByteBufferUtils {
     public static ByteBuffer revertShift(@NotNull final byte[] array) {
         final var arrayCopy = Arrays.copyOf(array, array.length);
         for (int i = 0; i < arrayCopy.length; i++) {
-            arrayCopy[i] += MIN_VALUE;;
+            arrayCopy[i] += MIN_VALUE;
         }
         return ByteBuffer.wrap(arrayCopy);
     }
@@ -58,9 +58,9 @@ public final class ByteBufferUtils {
     }
 
     /**
-     * toArray
+     * toArray.
      *
-     * @param buffer
+     * @param buffer - buffer
      * @return byte
      */
     public static byte[] toArray(@NotNull final ByteBuffer buffer) {

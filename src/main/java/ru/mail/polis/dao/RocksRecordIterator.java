@@ -28,8 +28,7 @@ public class RocksRecordIterator implements Iterator<Record>, AutoCloseable {
         final var key = ByteBufferUtils.revertShift(iterator.key());
         final var value = iterator.value();
         iterator.next();
-        final var record = Record.of(key, ByteBuffer.wrap(value));
-        return record;
+        return Record.of(key, ByteBuffer.wrap(value));
     }
 
     @Override
