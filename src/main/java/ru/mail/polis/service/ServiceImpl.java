@@ -1,6 +1,13 @@
 package ru.mail.polis.service;
 
-import one.nio.http.*;
+import one.nio.http.Param;
+import one.nio.http.Path;
+import one.nio.http.HttpServer;
+import one.nio.http.HttpServerConfig;
+import one.nio.http.Response;
+import one.nio.http.Request;
+import one.nio.http.HttpSession;
+
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 
@@ -17,11 +24,21 @@ public class ServiceImpl extends HttpServer implements Service {
         this.dao = dao;
     }
 
+    /**
+     * status response.
+     *
+     * @return Response
+     */
     @Path("/v0/status")
     public Response status() {
         return Response.ok("OK");
     }
 
+    /**
+     * entity response.
+     *
+     * @return Response
+     */
     @Path("/v0/entity")
     public Response entity(
             @Param("id") final String id,
@@ -53,7 +70,7 @@ public class ServiceImpl extends HttpServer implements Service {
                 default:
                     return new Response(Response.METHOD_NOT_ALLOWED, Response.EMPTY);
             }
-        } catch (Exception ex) {
+        } catch (IOException ex) {
             return new Response(Response.INTERNAL_ERROR, Response.EMPTY);
         }
     }
