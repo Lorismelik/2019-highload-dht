@@ -10,6 +10,7 @@ import one.nio.http.HttpSession;
 
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.dao.NoSuchElementExceptionLite;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -50,8 +51,12 @@ public class ServiceImpl extends HttpServer implements Service {
             final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
             switch (request.getMethod()) {
                 case Request.METHOD_GET: {
+                    try{
                         final var value = dao.get(key).duplicate();
                         return new Response(Response.OK, value.array());
+                    } catch (NoSuchElementExceptionLite | IOException ex) {
+                        return new Response(Response.NOT_FOUND, Response.EMPTY);
+                    }
                 }
                 case Request.METHOD_PUT: {
                     final var value = ByteBuffer.wrap(request.getBody());
