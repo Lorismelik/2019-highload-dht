@@ -51,7 +51,7 @@ public class ServiceImpl extends HttpServer implements Service {
             final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
             switch (request.getMethod()) {
                 case Request.METHOD_GET: {
-                    doGet(request, key);
+                    return doGet(key);
                 }
                 case Request.METHOD_PUT: {
                     final var value = ByteBuffer.wrap(request.getBody());
@@ -70,7 +70,7 @@ public class ServiceImpl extends HttpServer implements Service {
         }
     }
 
-    private Response doGet(Request request, ByteBuffer key) {
+    private Response doGet(final ByteBuffer key) {
         try{
             final var value = dao.get(key).duplicate();
             return new Response(Response.OK, value.array());
@@ -78,6 +78,7 @@ public class ServiceImpl extends HttpServer implements Service {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
         }
     }
+    
     @Override
     public void handleDefault(final Request request, final HttpSession session) throws IOException {
         final var response = new Response(Response.BAD_REQUEST, Response.EMPTY);
