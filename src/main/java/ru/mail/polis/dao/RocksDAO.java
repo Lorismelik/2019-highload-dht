@@ -11,23 +11,23 @@ public class RocksDAO implements DAO {
 
     private final RocksDB db;
 
-    RocksDAO(RocksDB db) {
+    RocksDAO(final RocksDB db) {
         this.db = db;
     }
 
     @NotNull
     @Override
-    public Iterator<Record> iterator(@NotNull ByteBuffer from) {
+    public Iterator<Record> iterator(@NotNull final ByteBuffer from) {
         final var iterator = db.newIterator();
-        iterator.seek(from.array());
+        iterator.seek(ByteBufferUtils.shiftBytes(from));
         return new RocksRecordIterator(iterator);
     }
 
     @NotNull
     @Override
-    public ByteBuffer get(@NotNull ByteBuffer key) throws RockException {
+    public ByteBuffer get(@NotNull final ByteBuffer key) throws RockException {
         try {
-            final var result = db.get(key.array());
+            final var result = db.get(ByteBufferUtils.shiftBytes(key));
             if (result == null) {
                 throw new NoSuchElementExceptionLite("Cant find element with key " + key.toString());
             }
@@ -38,18 +38,18 @@ public class RocksDAO implements DAO {
     }
 
     @Override
-    public void upsert(@NotNull ByteBuffer key, @NotNull ByteBuffer value) throws RockException {
+    public void upsert(@NotNull final ByteBuffer key, @NotNull final ByteBuffer value) throws RockException {
         try {
-            db.put(key.array(), value.array());
+            db.put(ByteBufferUtils.shiftBytes(key), ByteBufferUtils.toArray(value));
         } catch (RocksDBException exception) {
             throw new RockException("Error while upsert", exception);
         }
     }
 
     @Override
-    public void remove(@NotNull ByteBuffer key) throws RockException {
+    public void remove(@NotNull final ByteBuffer key) throws RockException {
         try {
-            db.delete(key.array());
+            db.delete(ByteBufferUtils.shiftBytes(key));
         } catch (RocksDBException exception) {
             throw new RockException("Error while remove", exception);
         }

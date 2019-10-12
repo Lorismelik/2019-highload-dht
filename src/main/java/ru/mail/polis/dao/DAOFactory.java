@@ -20,11 +20,7 @@ import java.io.File;
 import java.io.IOException;
 
 
-import org.rocksdb.ComparatorOptions;
-import org.rocksdb.RocksDB;
-import org.rocksdb.Options;
-import org.rocksdb.RocksDBException;
-import org.rocksdb.util.BytewiseComparator;
+import org.rocksdb.*;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -61,10 +57,9 @@ public final class DAOFactory {
 
         RocksDB.loadLibrary();
         try {
-            final var comparator = new BytewiseComparator(new ComparatorOptions());
             final var options = new Options()
                     .setCreateIfMissing(true)
-                    .setComparator(comparator);
+                    .setComparator(BuiltinComparator.BYTEWISE_COMPARATOR);
             final var db = RocksDB.open(options, data.getAbsolutePath());
             return new RocksDAO(db);
         } catch (RocksDBException exception) {

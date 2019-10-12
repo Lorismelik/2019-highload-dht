@@ -25,10 +25,10 @@ public class RocksRecordIterator implements Iterator<Record>, AutoCloseable {
         if (!hasNext()) {
             throw new IllegalStateException("Iterator is exhausted");
         }
-        final var key = iterator.key();
+        final var key = ByteBufferUtils.revertShift(iterator.key());
         final var value = iterator.value();
         iterator.next();
-        final var record = Record.of(ByteBuffer.wrap(key), ByteBuffer.wrap(value));
+        final var record = Record.of(key, ByteBuffer.wrap(value));
         return record;
     }
 
