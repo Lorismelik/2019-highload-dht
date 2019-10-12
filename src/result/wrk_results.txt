@@ -1,0 +1,31 @@
+wrk -t5 -c5 -d30s -s ./src/scripts/put.lua --latency http://localhost:8080
+Running 30s test @ http://localhost:8080
+  5 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   284.75us    1.13ms  33.65ms   98.85%
+    Req/Sec     4.88k   665.17     6.17k    69.80%
+  Latency Distribution
+     50%  170.00us
+     75%  208.00us
+     90%  282.00us
+     99%    1.71ms
+  728605 requests in 30.01s, 46.56MB read
+Requests/sec:  24277.99
+Transfer/sec:      1.55MB
+
+
+wrk -t5 -c5 -d30s -s ./src/scripts/get.lua --latency http://localhost:8080
+Running 30s test @ http://localhost:8080
+  5 threads and 5 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   442.62us    3.67ms 101.56ms   98.97%
+    Req/Sec     6.55k     1.84k   10.42k    68.58%
+  Latency Distribution
+     50%  116.00us
+     75%  152.00us
+     90%  246.00us
+     99%    4.33ms
+  978623 requests in 30.11s, 64.40MB read
+  Non-2xx or 3xx responses: 978623
+Requests/sec:  32506.50
+Transfer/sec:      2.14MB
