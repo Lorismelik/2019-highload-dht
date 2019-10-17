@@ -1,9 +1,11 @@
-package ru.mail.polis.dao;
+package ru.mail.polis.dao.lorismelik;
 
 import org.jetbrains.annotations.NotNull;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import ru.mail.polis.Record;
+import ru.mail.polis.dao.ByteBufferUtils;
+import ru.mail.polis.dao.DAO;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
@@ -12,7 +14,7 @@ public class RocksDAO implements DAO {
 
     private final RocksDB db;
 
-    RocksDAO(final RocksDB db) {
+    public RocksDAO(final RocksDB db) {
         this.db = db;
     }
 

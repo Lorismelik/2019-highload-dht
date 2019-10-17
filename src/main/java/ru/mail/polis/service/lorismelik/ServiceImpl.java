@@ -1,4 +1,4 @@
-package ru.mail.polis.service;
+package ru.mail.polis.service.lorismelik;
 
 import one.nio.http.Param;
 import one.nio.http.Path;
@@ -10,7 +10,8 @@ import one.nio.http.HttpSession;
 
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
-import ru.mail.polis.dao.NoSuchElementExceptionLite;
+import ru.mail.polis.dao.lorismelik.NoSuchElementExceptionLite;
+import ru.mail.polis.service.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -19,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 public class ServiceImpl extends HttpServer implements Service {
     private final DAO dao;
 
-    ServiceImpl(final HttpServerConfig config, @NotNull final DAO dao) throws IOException {
+    public ServiceImpl(final HttpServerConfig config, @NotNull final DAO dao) throws IOException {
         super(config);
         this.dao = dao;
     }
@@ -73,6 +74,7 @@ public class ServiceImpl extends HttpServer implements Service {
     private Response doGet(final ByteBuffer key) {
         try{
             final var value = dao.get(key).duplicate();
+            value.arrayOffset();
             return new Response(Response.OK, value.array());
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);

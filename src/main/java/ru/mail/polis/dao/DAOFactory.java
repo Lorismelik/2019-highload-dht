@@ -24,6 +24,8 @@ import org.rocksdb.BuiltinComparator;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import ru.mail.polis.dao.lorismelik.RockException;
+import ru.mail.polis.dao.lorismelik.RocksDAO;
 
 /**
  * Custom {@link DAO} factory.

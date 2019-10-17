@@ -1,8 +1,9 @@
-package ru.mail.polis.dao;
+package ru.mail.polis.dao.lorismelik;
 
 import org.jetbrains.annotations.NotNull;
 import org.rocksdb.RocksIterator;
 import ru.mail.polis.Record;
+import ru.mail.polis.dao.ByteBufferUtils;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;

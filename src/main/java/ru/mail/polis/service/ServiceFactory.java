@@ -23,6 +23,7 @@ import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
+import ru.mail.polis.service.lorismelik.ServiceImpl;
 
 /**
  * Constructs {@link Service} instances.
