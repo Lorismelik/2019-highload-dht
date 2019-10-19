@@ -47,7 +47,8 @@ public class AsyncServiceImpl extends HttpServer implements Service {
      * @param dao      - storage interface
      * @param executor - an object that executes submitted tasks
      */
-    public AsyncServiceImpl(final int port, @NotNull final DAO dao, @NotNull final Executor executor) throws IOException {
+    public AsyncServiceImpl(final int port, @NotNull final DAO dao, @NotNull final Executor executor)
+            throws IOException {
         super(from(port));
         this.dao = dao;
         this.executor = executor;
@@ -190,7 +191,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             value.arrayOffset();
             return new Response(Response.OK, value.array());
         } catch (NoSuchElementExceptionLite | IOException ex) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
+            return new Response(Response.NOT_FOUND, EMPTY);
         }
     }
 }
