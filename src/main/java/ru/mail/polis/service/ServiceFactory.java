@@ -19,6 +19,7 @@ package ru.mail.polis.service;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.Set;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import one.nio.http.HttpServerConfig;
@@ -43,14 +44,16 @@ public final class ServiceFactory {
     /**
      * Construct a storage instance.
      *
-     * @param port port to bind HTTP server to
-     * @param dao  DAO to store the data
+     * @param port     port to bind HTTP server to
+     * @param dao      DAO to store the data
+     * @param topology a list of all cluster endpoints {@code http://<host>:<port>} (including this one)
      * @return a storage instance
      */
     @NotNull
     public static Service create(
             final int port,
-            @NotNull final DAO dao) throws IOException {
+            @NotNull final DAO dao,
+            @NotNull final Set<String> topology) throws IOException {
         if (Runtime.getRuntime().maxMemory() > MAX_HEAP) {
             throw new IllegalStateException("The heap is too big. Consider setting Xmx.");
         }
