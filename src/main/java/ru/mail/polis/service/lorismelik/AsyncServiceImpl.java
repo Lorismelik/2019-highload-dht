@@ -191,7 +191,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             value.arrayOffset();
             return new Response(Response.OK, value.array());
         } catch (NoSuchElementExceptionLite | IOException ex) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
+            return new Response(Response.NOT_FOUND, EMPTY);
         }
     }
 }
