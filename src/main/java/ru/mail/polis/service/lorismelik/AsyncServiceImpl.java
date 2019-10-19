@@ -26,12 +26,7 @@ import java.util.concurrent.Executor;
 import org.jetbrains.annotations.NotNull;
 
 import static java.util.logging.Level.INFO;
-import static one.nio.http.Response.METHOD_NOT_ALLOWED;
-import static one.nio.http.Response.INTERNAL_ERROR;
-import static one.nio.http.Response.BAD_REQUEST;
-import static one.nio.http.Response.EMPTY;
 
-@SuppressWarnings("PMD.TooManyStaticImports")
 public class AsyncServiceImpl extends HttpServer implements Service {
     @NotNull
     private final DAO dao;
@@ -73,7 +68,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     /**
      * Life check.
      *
-     * @return - response
+     * @return response
      */
     @Path("/v0/status")
     public Response status() {
@@ -83,14 +78,14 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     /**
      * Access to DAO.
      *
-     * @param request - requests: GET, PUT, DELETE
-     * @param session - HttpSession
+     * @param request requests: GET, PUT, DELETE
+     * @param session HttpSession
      */
     private void entity(@NotNull final Request request, final HttpSession session) throws IOException {
         final String id = request.getParameter("id=");
         if (id == null || id.isEmpty()) {
             try {
-                session.sendResponse(new Response(BAD_REQUEST, EMPTY));
+                session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             } catch (IOException e) {
                 logger.log(INFO, "something has gone terribly wrong", e);
             }
@@ -106,21 +101,21 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 case Request.METHOD_PUT:
                     executeAsync(session, () -> {
                         dao.upsert(key, ByteBuffer.wrap(request.getBody()));
-                        return new Response(Response.CREATED, EMPTY);
+                        return new Response(Response.CREATED, Response.EMPTY);
                     });
                     break;
                 case Request.METHOD_DELETE:
                     executeAsync(session, () -> {
                         dao.remove(key);
-                        return new Response(Response.ACCEPTED, EMPTY);
+                        return new Response(Response.ACCEPTED, Response.EMPTY);
                     });
                     break;
                 default:
-                    session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
+                    session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
                     break;
             }
         } catch (IOException e) {
-            session.sendError(INTERNAL_ERROR, e.getMessage());
+            session.sendError(Response.INTERNAL_ERROR, e.getMessage());
         }
     }
 
@@ -134,7 +129,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 entities(request, session);
                 break;
             default:
-                session.sendError(BAD_REQUEST, "Wrong path");
+                session.sendError(Response.BAD_REQUEST, "Wrong path");
                 break;
         }
     }
@@ -145,7 +140,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 session.sendResponse(action.act());
             } catch (IOException e) {
                 try {
-                    session.sendError(INTERNAL_ERROR, e.getMessage());
+                    session.sendError(Response.INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
                     logger.log(INFO, "something has gone terribly wrong", e);
                 }
@@ -161,12 +156,12 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private void entities(@NotNull final Request request, @NotNull final HttpSession session) throws IOException {
         final String start = request.getParameter("start=");
         if (start == null || start.isEmpty()) {
-            session.sendError(BAD_REQUEST, "No start");
+            session.sendError(Response.BAD_REQUEST, "No start");
             return;
         }
 
         if (request.getMethod() != Request.METHOD_GET) {
-            session.sendError(METHOD_NOT_ALLOWED, "Wrong method");
+            session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
             return;
         }
 
@@ -181,7 +176,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                             end == null ? null : ByteBuffer.wrap(end.getBytes(StandardCharsets.UTF_8)));
             ((StorageSession) session).stream(records);
         } catch (IOException e) {
-            session.sendError(INTERNAL_ERROR, e.getMessage());
+            session.sendError(Response.INTERNAL_ERROR, e.getMessage());
         }
     }
 
