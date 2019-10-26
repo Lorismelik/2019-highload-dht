@@ -45,22 +45,6 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
 
     /**
-     * Simple Async HTTP server.
-     *
-     * @param port     - to accept HTTP connections
-     * @param dao      - storage interface
-     */
-    public AsyncServiceImpl(final int port, @NotNull final DAO dao)
-            throws IOException {
-        super(from(port));
-        this.dao = dao;
-        this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("worker").build());
-        this.nodes = null;
-        this.clusterClients = null;
-    }
-
-    /**
      * Create the HTTP Cluster server.
      *
      * @param config HTTP server configurations
@@ -78,18 +62,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
         this.nodes = nodes;
         this.clusterClients = clusterClients;
     }
-
-    private static HttpServerConfig from(final int port) {
-        final AcceptorConfig ac = new AcceptorConfig();
-        ac.port = port;
-        ac.reusePort = true;
-        ac.deferAccept = true;
-
-        final HttpServerConfig config = new HttpServerConfig();
-        config.acceptors = new AcceptorConfig[]{ac};
-        return config;
-    }
-
+    
     @Override
     public HttpSession createSession(final Socket socket) {
         return new StorageSession(socket, this);

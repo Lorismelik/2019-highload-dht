@@ -68,6 +68,8 @@ public final class ServiceFactory {
         final var config = new HttpServerConfig();
         acceptor.port = port;
         config.acceptors = new AcceptorConfig[]{acceptor};
+        config.maxWorkers = Runtime.getRuntime().availableProcessors();
+        config.queueTime = 10;
         final Map<String, HttpClient> clusterClients = new HashMap<>();
         for (final String it : nodes.getNodes()) {
             if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
