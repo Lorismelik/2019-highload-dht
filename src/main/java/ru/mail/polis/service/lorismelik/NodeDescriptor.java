@@ -19,9 +19,9 @@ public class NodeDescriptor {
     }
 
     /**
-     * Define node by key
+     * Define node by key.
      *
-     * @param key
+     * @param key key to found
      * @return id of the cluster node
      */
     public String getNodeIdByKey(@NotNull final ByteBuffer key) {

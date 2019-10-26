@@ -19,11 +19,8 @@ package ru.mail.polis.service;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.Set;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import one.nio.http.HttpClient;
 import one.nio.http.HttpServerConfig;
 import one.nio.net.ConnectionString;
