@@ -17,17 +17,22 @@
 package ru.mail.polis.service;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.Set;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import one.nio.http.HttpClient;
 import one.nio.http.HttpServerConfig;
+import one.nio.net.ConnectionString;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
 
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.service.lorismelik.AsyncServiceImpl;
+import ru.mail.polis.service.lorismelik.NodeDescriptor;
 
 /**
  * Constructs {@link Service} instances.
@@ -61,15 +66,17 @@ public final class ServiceFactory {
         if (port <= 0 || 65536 <= port) {
             throw new IllegalArgumentException("Port out of range");
         }
-
+        final NodeDescriptor nodes = new NodeDescriptor(topology, "http://localhost:" + port);
         final var acceptor = new AcceptorConfig();
         final var config = new HttpServerConfig();
         acceptor.port = port;
         config.acceptors = new AcceptorConfig[]{acceptor};
-
-        final Executor executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("worker").build());
-
-        return new AsyncServiceImpl(port, dao, executor);
+        final Map<String, HttpClient> clusterClients = new HashMap<>();
+        for (final String it : nodes.getNodes()) {
+            if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
+                clusterClients.put(it, new HttpClient(new ConnectionString(it + "?timeout=100")));
+            }
+        }
+        return new AsyncServiceImpl(config, dao, nodes, clusterClients);
     }
 }
