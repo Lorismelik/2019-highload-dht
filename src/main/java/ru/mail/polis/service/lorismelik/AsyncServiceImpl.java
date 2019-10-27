@@ -16,7 +16,6 @@ import one.nio.http.Request;
 import one.nio.http.HttpClient;
 import one.nio.http.HttpException;
 import one.nio.net.Socket;
-import one.nio.server.AcceptorConfig;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -62,7 +61,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
         this.nodes = nodes;
         this.clusterClients = clusterClients;
     }
-    
+
     @Override
     public HttpSession createSession(final Socket socket) {
         return new StorageSession(socket, this);
