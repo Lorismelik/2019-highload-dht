@@ -46,18 +46,17 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     /**
      * Create the HTTP Cluster server.
      *
-     * @param config HTTP server configurations
-     * @param dao to initialize the DAO instance within the server
-     * @param nodes to represent cluster nodes
+     * @param config         HTTP server configurations
+     * @param dao            to initialize the DAO instance within the server
+     * @param nodes          to represent cluster nodes
      * @param clusterClients initialized cluster clients
      */
-    public AsyncServiceImpl(final HttpServerConfig config, @NotNull final DAO dao,
-                            @NotNull final NodeDescriptor nodes,
+    public AsyncServiceImpl(@NotNull final HttpServerConfig config, @NotNull final DAO dao, @NotNull final NodeDescriptor nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
         this.dao = dao;
         this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("worker").build());
+                new ThreadFactoryBuilder().setNameFormat("worker-%d").build());
         this.nodes = nodes;
         this.clusterClients = clusterClients;
     }
@@ -89,14 +88,14 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             try {
                 session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             } catch (IOException e) {
-                logger.log(INFO, "something has gone terribly wrong", e);
+                logger.info("something has gone terribly wrong \n" + e);
             }
             return;
         }
 
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final String keyClusterPartition = nodes.getNodeIdByKey(key);
-        if(!nodes.getId().equals(keyClusterPartition)) {
+        if (!nodes.getId().equals(keyClusterPartition)) {
             executeAsync(session, () -> forwardRequestTo(keyClusterPartition, request));
             return;
         }
@@ -149,7 +148,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 try {
                     session.sendError(Response.INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
-                    logger.log(INFO, "something has gone terribly wrong", e);
+                    logger.info("something has gone terribly wrong \n" + e);
                 }
             }
         });
@@ -190,7 +189,6 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private Response doGet(final ByteBuffer key) {
         try {
             final var value = dao.get(key).duplicate();
-            value.arrayOffset();
             return new Response(Response.OK, value.array());
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);

@@ -9,13 +9,14 @@ import static java.lang.Byte.MIN_VALUE;
 
 public final class ByteBufferUtils {
 
-    private ByteBufferUtils(){}
+    private ByteBufferUtils() {
+    }
 
     /**
-     * shiftBytes.
+     * Create byte array from ByteBuffer and subtract from each item of array -2^7 value.
      *
-     * @param buffer - buffer
-     * @return byte
+     * @param buffer ByteBuffer
+     * @return byte array
      */
     public static byte[] shiftBytes(@NotNull final ByteBuffer buffer) {
         final var copy = clone(buffer);
@@ -28,9 +29,9 @@ public final class ByteBufferUtils {
     }
 
     /**
-     * revertShift.
+     * Add to each item of array -2^7 value and wrap ByteBuffer over it.
      *
-     * @param array - array
+     * @param array byte array
      * @return ByteBuffer
      */
     public static ByteBuffer revertShift(@NotNull final byte[] array) {
@@ -41,11 +42,10 @@ public final class ByteBufferUtils {
         return ByteBuffer.wrap(arrayCopy);
     }
 
-
     /**
-     * clone.
+     * Deep clone.
      *
-     * @param original - original
+     * @param original array which need to be copied
      * @return ByteBuffer
      */
     public static ByteBuffer clone(final ByteBuffer original) {
@@ -58,10 +58,10 @@ public final class ByteBufferUtils {
     }
 
     /**
-     * toArray.
+     * Unwrap byte array from ByteBuffer.
      *
-     * @param buffer - buffer
-     * @return byte
+     * @param buffer ByteBuffer
+     * @return byte array
      */
     public static byte[] toArray(@NotNull final ByteBuffer buffer) {
         final var bufferCopy = buffer.duplicate();
