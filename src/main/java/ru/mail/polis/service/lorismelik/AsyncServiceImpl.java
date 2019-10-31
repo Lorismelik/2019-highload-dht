@@ -30,8 +30,6 @@ import java.util.concurrent.Executor;
 
 import org.jetbrains.annotations.NotNull;
 
-import static java.util.logging.Level.INFO;
-
 public class AsyncServiceImpl extends HttpServer implements Service {
     @NotNull
     private final DAO dao;
@@ -51,7 +49,9 @@ public class AsyncServiceImpl extends HttpServer implements Service {
      * @param nodes          to represent cluster nodes
      * @param clusterClients initialized cluster clients
      */
-    public AsyncServiceImpl(@NotNull final HttpServerConfig config, @NotNull final DAO dao, @NotNull final NodeDescriptor nodes,
+    public AsyncServiceImpl(@NotNull final HttpServerConfig config,
+                            @NotNull final DAO dao,
+                            @NotNull final NodeDescriptor nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
         this.dao = dao;
