@@ -189,7 +189,9 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private Response doGet(final ByteBuffer key) {
         try {
             final var value = dao.get(key).duplicate();
-            return new Response(Response.OK, value.array());
+            final var body = new byte[value.remaining()];
+            value.get(body);
+            return new Response(Response.OK, body);
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
         }
