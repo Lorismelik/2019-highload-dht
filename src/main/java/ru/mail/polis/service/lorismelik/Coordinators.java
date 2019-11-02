@@ -227,13 +227,13 @@ public class Coordinators {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
                     session.sendResponse(coordinateGet(replicaClusters, request, acks, proxied));
-                    return;
+                    break;
                 case Request.METHOD_PUT:
                     session.sendResponse(coordinatePut(replicaClusters, request, acks, proxied));
-                    return;
+                    break;
                 case Request.METHOD_DELETE:
                     session.sendResponse(coordinateDelete(replicaClusters, request, acks, proxied));
-                    return;
+                    break;
                 default:
                     session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
             }

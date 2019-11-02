@@ -1,7 +1,6 @@
 package ru.mail.polis.service.lorismelik;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import one.nio.pool.PoolException;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.lorismelik.NoSuchElementExceptionLite;
@@ -15,7 +14,6 @@ import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Request;
 import one.nio.http.HttpClient;
-import one.nio.http.HttpException;
 import one.nio.net.Socket;
 
 import java.nio.ByteBuffer;
@@ -44,7 +42,6 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private final Map<String, HttpClient> clusterClients;
 
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
-
 
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
     private final RF defaultRF;
