@@ -110,7 +110,8 @@ public class AsyncServiceImpl extends HttpServer implements Service {
 
         if (proxied || nodes.getNodes().size() > 1) {
             final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
-            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(replicaFactor.getFrom(), key);
+            final String[] replicaClusters = proxied ? new String[]{nodes.getId()}
+            : nodes.replicas(replicaFactor.getFrom(), key);
             clusterCoordinator.coordinateRequest(replicaClusters, request, replicaFactor.getAck(), session);
         } else {
             try {
