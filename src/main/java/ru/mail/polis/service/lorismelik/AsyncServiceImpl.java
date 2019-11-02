@@ -5,6 +5,7 @@ import one.nio.pool.PoolException;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.lorismelik.NoSuchElementExceptionLite;
+import ru.mail.polis.dao.lorismelik.RocksDAO;
 import ru.mail.polis.service.Service;
 
 import one.nio.http.HttpServer;
@@ -34,32 +35,39 @@ import static java.util.logging.Level.INFO;
 
 public class AsyncServiceImpl extends HttpServer implements Service {
     @NotNull
-    private final DAO dao;
+    private final RocksDAO dao;
     @NotNull
     private final Executor executor;
     private final NodeDescriptor nodes;
 
+    private final int clusterSize;
     private final Map<String, HttpClient> clusterClients;
 
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
 
+
+    private static final String PROXY_HEADER = "X-OK-Proxy: True";
+    private final RF defaultRF;
+
     /**
      * Create the HTTP Cluster server.
      *
-     * @param config HTTP server configurations
-     * @param dao to initialize the DAO instance within the server
-     * @param nodes to represent cluster nodes
+     * @param config         HTTP server configurations
+     * @param dao            to initialize the DAO instance within the server
+     * @param nodes          to represent cluster nodes
      * @param clusterClients initialized cluster clients
      */
     public AsyncServiceImpl(final HttpServerConfig config, @NotNull final DAO dao,
                             @NotNull final NodeDescriptor nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
-        this.dao = dao;
+        this.dao = (RocksDAO) dao;
         this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("worker").build());
         this.nodes = nodes;
         this.clusterClients = clusterClients;
+        this.defaultRF = new RF(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
+        this.clusterSize = nodes.getNodes().size();
     }
 
     @Override
@@ -94,35 +102,44 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             return;
         }
 
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final String keyClusterPartition = nodes.getNodeIdByKey(key);
-        if(!nodes.getId().equals(keyClusterPartition)) {
-            executeAsync(session, () -> forwardRequestTo(keyClusterPartition, request));
-            return;
+        boolean proxied = false;
+        if (request.getHeader(PROXY_HEADER) != null) {
+            proxied = true;
         }
-        try {
-            switch (request.getMethod()) {
-                case Request.METHOD_GET:
-                    executeAsync(session, () -> doGet(key));
-                    break;
-                case Request.METHOD_PUT:
-                    executeAsync(session, () -> {
-                        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
-                        return new Response(Response.CREATED, Response.EMPTY);
-                    });
-                    break;
-                case Request.METHOD_DELETE:
-                    executeAsync(session, () -> {
-                        dao.remove(key);
-                        return new Response(Response.ACCEPTED, Response.EMPTY);
-                    });
-                    break;
-                default:
-                    session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
-                    break;
+        final String replicas = request.getParameter("replicas");
+        final RF rf = RF.calculateRF(replicas, session, defaultRF, clusterSize);
+        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+        final boolean proxiedF = proxied;
+
+        if (proxied || nodes.getNodes().size() > 1) {
+            final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
+            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(rf.getFrom(), key);
+            clusterCoordinator.coordinateRequest(replicaClusters, request, rf.getAck(), session);
+        } else {
+            try {
+                switch (request.getMethod()) {
+                    case Request.METHOD_GET:
+                        executeAsync(session, () -> doGet(key));
+                        break;
+                    case Request.METHOD_PUT:
+                        executeAsync(session, () -> {
+                            dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+                            return new Response(Response.CREATED, Response.EMPTY);
+                        });
+                        break;
+                    case Request.METHOD_DELETE:
+                        executeAsync(session, () -> {
+                            dao.remove(key);
+                            return new Response(Response.ACCEPTED, Response.EMPTY);
+                        });
+                        break;
+                    default:
+                        session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
+                        break;
+                }
+            } catch (IOException e) {
+                session.sendError(Response.INTERNAL_ERROR, e.getMessage());
             }
-        } catch (IOException e) {
-            session.sendError(Response.INTERNAL_ERROR, e.getMessage());
         }
     }
 
@@ -194,14 +211,6 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             return new Response(Response.OK, value.array());
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
-        }
-    }
-
-    private Response forwardRequestTo(@NotNull final String cluster, final Request request) throws IOException {
-        try {
-            return clusterClients.get(cluster).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException e) {
-            throw new IOException("Fail on forward", e);
         }
     }
 }
