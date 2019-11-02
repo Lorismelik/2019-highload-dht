@@ -236,6 +236,7 @@ public class Coordinators {
                     break;
                 default:
                     session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
+                    break;
             }
         } catch (IOException e) {
             session.sendError(Response.GATEWAY_TIMEOUT, e.getMessage());
