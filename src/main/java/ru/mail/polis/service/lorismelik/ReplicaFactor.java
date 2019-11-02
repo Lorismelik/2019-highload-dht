@@ -37,8 +37,10 @@ public class ReplicaFactor {
      * @param clusterSize to specify the size of cluster
      * @return RF value
      */
-    public static ReplicaFactor calculateRF(final String replicas, @NotNull final HttpSession session,
-                                            final ReplicaFactor defaultReplicaFactor, final int clusterSize) throws IOException {
+    public static ReplicaFactor calculateRF(final String replicas,
+                                            @NotNull final HttpSession session,
+                                            final ReplicaFactor defaultReplicaFactor,
+                                            final int clusterSize) throws IOException {
         ReplicaFactor replicaFactor = null;
         try {
             replicaFactor = replicas == null ? defaultReplicaFactor : ReplicaFactor.of(replicas);

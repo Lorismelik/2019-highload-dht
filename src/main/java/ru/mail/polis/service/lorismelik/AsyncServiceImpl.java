@@ -104,7 +104,8 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             proxied = true;
         }
         final String replicas = request.getParameter("replicas");
-        final ReplicaFactor replicaFactor = ReplicaFactor.calculateRF(replicas, session, defaultReplicaFactor, clusterSize);
+        final ReplicaFactor replicaFactor =
+                ReplicaFactor.calculateRF(replicas, session, defaultReplicaFactor, clusterSize);
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final boolean proxiedF = proxied;
 
