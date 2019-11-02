@@ -16,7 +16,7 @@
 !checkstyle.xml
 !.codeclimate.yml
 !*.svg
-!wrk_results.txt
+!*.txt
 
 # ...even if they are in subdirectories
 !*/
