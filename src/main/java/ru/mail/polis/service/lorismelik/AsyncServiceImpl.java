@@ -44,7 +44,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
 
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
-    private final Replica defaultReplica;
+    private final ReplicaFactor defaultReplicaFactor;
 
     /**
      * Create the HTTP Cluster server.
@@ -63,7 +63,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 new ThreadFactoryBuilder().setNameFormat("worker").build());
         this.nodes = nodes;
         this.clusterClients = clusterClients;
-        this.defaultReplica = new Replica(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
+        this.defaultReplicaFactor = new ReplicaFactor(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
         this.clusterSize = nodes.getNodes().size();
     }
 
@@ -104,14 +104,14 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             proxied = true;
         }
         final String replicas = request.getParameter("replicas");
-        final Replica replica = Replica.calculateRF(replicas, session, defaultReplica, clusterSize);
+        final ReplicaFactor replicaFactor = ReplicaFactor.calculateRF(replicas, session, defaultReplicaFactor, clusterSize);
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final boolean proxiedF = proxied;
 
         if (proxied || nodes.getNodes().size() > 1) {
             final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
-            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(replica.getFrom(), key);
-            clusterCoordinator.coordinateRequest(replicaClusters, request, replica.getAck(), session);
+            final String[] replicaClusters = proxied ? new String[]{nodes.getId()} : nodes.replicas(replicaFactor.getFrom(), key);
+            clusterCoordinator.coordinateRequest(replicaClusters, request, replicaFactor.getAck(), session);
         } else {
             try {
                 switch (request.getMethod()) {
