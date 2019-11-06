@@ -18,6 +18,7 @@
 !*.svg
 !wrk_results.txt
 !wrk_replicas.txt
+!*.txt
 
 # ...even if they are in subdirectories
 !*/

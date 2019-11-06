@@ -29,17 +29,14 @@ import java.util.concurrent.Executor;
 
 import org.jetbrains.annotations.NotNull;
 
-import static java.util.logging.Level.INFO;
-
 public class AsyncServiceImpl extends HttpServer implements Service {
     @NotNull
     private final RocksDAO dao;
     @NotNull
     private final Executor executor;
     private final NodeDescriptor nodes;
-
+    private final Coordinators clusterCoordinator;
     private final int clusterSize;
-    private final Map<String, HttpClient> clusterClients;
 
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
 
@@ -54,17 +51,18 @@ public class AsyncServiceImpl extends HttpServer implements Service {
      * @param nodes          to represent cluster nodes
      * @param clusterClients initialized cluster clients
      */
-    public AsyncServiceImpl(final HttpServerConfig config, @NotNull final DAO dao,
+    public AsyncServiceImpl(final HttpServerConfig config,
+                            @NotNull final DAO dao,
                             @NotNull final NodeDescriptor nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
         this.dao = (RocksDAO) dao;
         this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
-                new ThreadFactoryBuilder().setNameFormat("worker").build());
+                new ThreadFactoryBuilder().setNameFormat("worker-%d").build());
         this.nodes = nodes;
-        this.clusterClients = clusterClients;
         this.defaultReplicaFactor = new ReplicaFactor(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
         this.clusterSize = nodes.getNodes().size();
+        this.clusterCoordinator = new Coordinators(nodes, clusterClients, dao);
     }
 
     @Override
@@ -94,23 +92,16 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             try {
                 session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             } catch (IOException e) {
-                logger.log(INFO, "something has gone terribly wrong", e);
+                logger.info("something has gone terribly wrong " + e);
             }
             return;
         }
-
-        boolean proxied = false;
-        if (request.getHeader(PROXY_HEADER) != null) {
-            proxied = true;
-        }
+        final boolean proxied = request.getHeader(PROXY_HEADER) != null;
         final String replicas = request.getParameter("replicas");
         final ReplicaFactor replicaFactor =
                 ReplicaFactor.calculateRF(replicas, session, defaultReplicaFactor, clusterSize);
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final boolean proxiedF = proxied;
-
         if (proxied || nodes.getNodes().size() > 1) {
-            final Coordinators clusterCoordinator = new Coordinators(nodes, clusterClients, dao, proxiedF);
             final String[] replicaClusters = proxied ? new String[]{nodes.getId()}
             : nodes.replicas(replicaFactor.getFrom(), key);
             clusterCoordinator.coordinateRequest(replicaClusters, request, replicaFactor.getAck(), session);
@@ -165,7 +156,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 try {
                     session.sendError(Response.INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
-                    logger.log(INFO, "something has gone terribly wrong", e);
+                    logger.info("something has gone terribly wrong " + e);
                 }
             }
         });
@@ -206,10 +197,12 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     private Response doGet(final ByteBuffer key) {
         try {
             final var value = dao.get(key).duplicate();
-            value.arrayOffset();
-            return new Response(Response.OK, value.array());
+            final var body = new byte[value.remaining()];
+            value.get(body);
+            return new Response(Response.OK, body);
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
         }
     }
 }
+

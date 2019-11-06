@@ -44,7 +44,8 @@ public class TimestampRecord {
      * @param value     to define the value
      * @param type      to specify the type of the record
      */
-    public TimestampRecord(final long timestamp, final ByteBuffer value,
+    public TimestampRecord(final long timestamp,
+                           final ByteBuffer value,
                            final RecordType type) {
         this.timestamp = timestamp;
         this.recordType = type;
