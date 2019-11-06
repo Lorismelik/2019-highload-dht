@@ -1,10 +1,10 @@
 package ru.mail.polis.service.lorismelik;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import one.nio.pool.PoolException;
 import ru.mail.polis.Record;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.lorismelik.NoSuchElementExceptionLite;
+import ru.mail.polis.dao.lorismelik.RocksDAO;
 import ru.mail.polis.service.Service;
 
 import one.nio.http.HttpServer;
@@ -14,7 +14,6 @@ import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Request;
 import one.nio.http.HttpClient;
-import one.nio.http.HttpException;
 import one.nio.net.Socket;
 
 import java.nio.ByteBuffer;
@@ -32,14 +31,17 @@ import org.jetbrains.annotations.NotNull;
 
 public class AsyncServiceImpl extends HttpServer implements Service {
     @NotNull
-    private final DAO dao;
+    private final RocksDAO dao;
     @NotNull
     private final Executor executor;
     private final NodeDescriptor nodes;
-
-    private final Map<String, HttpClient> clusterClients;
+    private final Coordinators clusterCoordinator;
+    private final int clusterSize;
 
     private static final Logger logger = Logger.getLogger(AsyncServiceImpl.class.getName());
+
+    private static final String PROXY_HEADER = "X-OK-Proxy: True";
+    private final ReplicaFactor defaultReplicaFactor;
 
     /**
      * Create the HTTP Cluster server.
@@ -49,16 +51,18 @@ public class AsyncServiceImpl extends HttpServer implements Service {
      * @param nodes          to represent cluster nodes
      * @param clusterClients initialized cluster clients
      */
-    public AsyncServiceImpl(@NotNull final HttpServerConfig config,
+    public AsyncServiceImpl(final HttpServerConfig config,
                             @NotNull final DAO dao,
                             @NotNull final NodeDescriptor nodes,
                             @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
         super(config);
-        this.dao = dao;
+        this.dao = (RocksDAO) dao;
         this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
                 new ThreadFactoryBuilder().setNameFormat("worker-%d").build());
         this.nodes = nodes;
-        this.clusterClients = clusterClients;
+        this.defaultReplicaFactor = new ReplicaFactor(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
+        this.clusterSize = nodes.getNodes().size();
+        this.clusterCoordinator = new Coordinators(nodes, clusterClients, dao);
     }
 
     @Override
@@ -88,40 +92,44 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             try {
                 session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
             } catch (IOException e) {
-                logger.info("something has gone terribly wrong \n" + e);
+                logger.info("something has gone terribly wrong " + e);
             }
             return;
         }
-
+        final boolean proxied = request.getHeader(PROXY_HEADER) != null;
+        final String replicas = request.getParameter("replicas");
+        final ReplicaFactor replicaFactor =
+                ReplicaFactor.calculateRF(replicas, session, defaultReplicaFactor, clusterSize);
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final String keyClusterPartition = nodes.getNodeIdByKey(key);
-        if (!nodes.getId().equals(keyClusterPartition)) {
-            executeAsync(session, () -> forwardRequestTo(keyClusterPartition, request));
-            return;
-        }
-        try {
-            switch (request.getMethod()) {
-                case Request.METHOD_GET:
-                    executeAsync(session, () -> doGet(key));
-                    break;
-                case Request.METHOD_PUT:
-                    executeAsync(session, () -> {
-                        dao.upsert(key, ByteBuffer.wrap(request.getBody()));
-                        return new Response(Response.CREATED, Response.EMPTY);
-                    });
-                    break;
-                case Request.METHOD_DELETE:
-                    executeAsync(session, () -> {
-                        dao.remove(key);
-                        return new Response(Response.ACCEPTED, Response.EMPTY);
-                    });
-                    break;
-                default:
-                    session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
-                    break;
+        if (proxied || nodes.getNodes().size() > 1) {
+            final String[] replicaClusters = proxied ? new String[]{nodes.getId()}
+            : nodes.replicas(replicaFactor.getFrom(), key);
+            clusterCoordinator.coordinateRequest(replicaClusters, request, replicaFactor.getAck(), session);
+        } else {
+            try {
+                switch (request.getMethod()) {
+                    case Request.METHOD_GET:
+                        executeAsync(session, () -> doGet(key));
+                        break;
+                    case Request.METHOD_PUT:
+                        executeAsync(session, () -> {
+                            dao.upsert(key, ByteBuffer.wrap(request.getBody()));
+                            return new Response(Response.CREATED, Response.EMPTY);
+                        });
+                        break;
+                    case Request.METHOD_DELETE:
+                        executeAsync(session, () -> {
+                            dao.remove(key);
+                            return new Response(Response.ACCEPTED, Response.EMPTY);
+                        });
+                        break;
+                    default:
+                        session.sendError(Response.METHOD_NOT_ALLOWED, "Wrong method");
+                        break;
+                }
+            } catch (IOException e) {
+                session.sendError(Response.INTERNAL_ERROR, e.getMessage());
             }
-        } catch (IOException e) {
-            session.sendError(Response.INTERNAL_ERROR, e.getMessage());
         }
     }
 
@@ -148,7 +156,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
                 try {
                     session.sendError(Response.INTERNAL_ERROR, e.getMessage());
                 } catch (IOException ex) {
-                    logger.info("something has gone terribly wrong \n" + e);
+                    logger.info("something has gone terribly wrong " + e);
                 }
             }
         });
@@ -194,14 +202,6 @@ public class AsyncServiceImpl extends HttpServer implements Service {
             return new Response(Response.OK, body);
         } catch (NoSuchElementExceptionLite | IOException ex) {
             return new Response(Response.NOT_FOUND, Response.EMPTY);
-        }
-    }
-
-    private Response forwardRequestTo(@NotNull final String cluster, final Request request) throws IOException {
-        try {
-            return clusterClients.get(cluster).invoke(request);
-        } catch (InterruptedException | PoolException | HttpException e) {
-            throw new IOException("Fail on forward", e);
         }
     }
 }

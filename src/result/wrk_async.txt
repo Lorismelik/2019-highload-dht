@@ -1,3 +1,4 @@
+AsyncServiceImpl
 GET
 Running 30s test @ http://localhost:8080
   4 threads and 4 connections
