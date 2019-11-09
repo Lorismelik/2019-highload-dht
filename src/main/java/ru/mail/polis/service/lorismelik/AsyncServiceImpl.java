@@ -53,8 +53,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
      */
     public AsyncServiceImpl(final HttpServerConfig config,
                             @NotNull final DAO dao,
-                            @NotNull final NodeDescriptor nodes,
-                            @NotNull final Map<String, HttpClient> clusterClients) throws IOException {
+                            @NotNull final NodeDescriptor nodes) throws IOException {
         super(config);
         this.dao = (RocksDAO) dao;
         this.executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(),
@@ -62,7 +61,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
         this.nodes = nodes;
         this.defaultReplicaFactor = new ReplicaFactor(nodes.getNodes().size() / 2 + 1, nodes.getNodes().size());
         this.clusterSize = nodes.getNodes().size();
-        this.clusterCoordinator = new Coordinators(nodes, clusterClients, dao);
+        this.clusterCoordinator = new Coordinators(nodes, dao);
     }
 
     @Override

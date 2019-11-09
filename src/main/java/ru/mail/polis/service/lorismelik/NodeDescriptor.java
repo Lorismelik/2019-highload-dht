@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class NodeDescriptor {
 
@@ -14,7 +15,8 @@ public class NodeDescriptor {
     private final String id;
 
     public NodeDescriptor(@NotNull final Set<String> nodes, @NotNull final String id) {
-        this.nodes = new ArrayList<>(nodes);
+        this.nodes = new ArrayList<>(nodes).stream().filter(x -> !x.equals(id))
+                .collect(Collectors.toUnmodifiableList());
         this.id = id;
     }
 

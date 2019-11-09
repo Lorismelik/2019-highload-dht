@@ -18,6 +18,7 @@ package ru.mail.polis.service;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -70,12 +71,6 @@ public final class ServiceFactory {
         config.acceptors = new AcceptorConfig[]{acceptor};
         config.maxWorkers = Runtime.getRuntime().availableProcessors();
         config.queueTime = 10;
-        final Map<String, HttpClient> clusterClients = new HashMap<>();
-        for (final String it : nodes.getNodes()) {
-            if (!nodes.getId().equals(it) && !clusterClients.containsKey(it)) {
-                clusterClients.put(it, new HttpClient(new ConnectionString(it + "?timeout=100")));
-            }
-        }
-        return new AsyncServiceImpl(config, dao, nodes, clusterClients);
+        return new AsyncServiceImpl(config, dao, nodes);
     }
 }
