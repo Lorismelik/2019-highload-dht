@@ -80,7 +80,7 @@ class Coordinators {
                     logger.log(Level.SEVERE, "Exception while delete ", e);
                 }
         };
-        final List<String> uris = Arrays.asList(replicaNodes);
+        ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
             local = CompletableFuture.runAsync(() -> {
@@ -177,7 +177,7 @@ class Coordinators {
         final AtomicInteger asks = new AtomicInteger(0);
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
-        final List<String> uris = Arrays.asList(replicaNodes);
+        ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         Consumer<Void> returnResult = x -> {
             if (asks.getPlain() >= acks) {
@@ -189,7 +189,7 @@ class Coordinators {
             }
         };
         CompletableFuture<Void> local = null;
-        if (uris.contains(nodes.getId())) {
+        if (uris.remove(nodes.getId())) {
             local = CompletableFuture.runAsync(() -> {
 
                 uris.remove(nodes.getId());
