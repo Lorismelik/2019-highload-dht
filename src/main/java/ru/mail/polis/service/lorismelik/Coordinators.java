@@ -37,7 +37,7 @@ import static java.net.http.HttpResponse.BodyHandlers.ofString;
 import static java.time.temporal.ChronoUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
-public class Coordinators {
+class Coordinators {
     private final RocksDAO dao;
     private final NodeDescriptor nodes;
     private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
@@ -48,11 +48,11 @@ public class Coordinators {
     /**
      * Create the cluster coordinator instance.
      *
-     * @param nodes          to specify cluster nodes
-     * @param dao            to specify current DAO
+     * @param nodes to specify cluster nodes
+     * @param dao   to specify current DAO
      */
-    public Coordinators(@NotNull final NodeDescriptor nodes,
-                        @NotNull final DAO dao) {
+    Coordinators(@NotNull final NodeDescriptor nodes,
+                 @NotNull final DAO dao) {
         this.dao = (RocksDAO) dao;
         this.nodes = nodes;
     }
@@ -64,37 +64,40 @@ public class Coordinators {
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
-    public void coordinateDelete(final String[] replicaNodes,
-                                     @NotNull final HttpSession session,
-                                     @NotNull final Request rqst,
-                                     final int acks) {
+    private void coordinateDelete(final String[] replicaNodes,
+                                  @NotNull final HttpSession session,
+                                  @NotNull final Request rqst,
+                                  final int acks) {
         final String id = rqst.getParameter("id=");
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
+        Consumer<Void> returnResult = x -> {
+            if (asks.getPlain() >= acks)
+                try {
+                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Exception while delete ", e);
+                }
+        };
         final List<String> uris = Arrays.asList(replicaNodes);
-        CompletableFuture local = CompletableFuture.runAsync(() -> {
+        CompletableFuture<Void> local = CompletableFuture.runAsync(() -> {
             if (uris.contains(nodes.getId())) {
                 try {
                     deleteWithTimestampMethodWrapper(key);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                    logger.log(Level.SEVERE, "Exception while delete", e);
                 }
             }
-        });
+        }).thenAccept(returnResult);
         List<HttpRequest> requests = createRequests(uris, id, methodDefiner);
-        List<CompletableFuture> futureList = requests.stream()
+        List<CompletableFuture<Void>> futureList = requests.stream()
                 .map(request -> client.sendAsync(request, ofByteArray())
                         .thenAccept(response -> {
                             if (response.statusCode() == 202)
                                 asks.incrementAndGet();
-                            if(asks.getPlain() >= acks)
-                                try {
-                                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                                } catch (IOException e) {
-                                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-                                }
+                            returnResult.accept(null);
                         }))
                 .collect(Collectors.toList());
         futureList.add(local);
@@ -108,38 +111,41 @@ public class Coordinators {
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
-    public void coordinatePut(final String[] replicaNodes,
-                                  @NotNull final HttpSession session,
-                                  @NotNull final Request rqst,
-                                  final int acks) throws IOException {
+    private void coordinatePut(final String[] replicaNodes,
+                               @NotNull final HttpSession session,
+                               @NotNull final Request rqst,
+                               final int acks) throws IOException {
         final String id = rqst.getParameter("id=");
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
+        Consumer<Void> returnResult = x -> {
+            if (asks.getPlain() >= acks)
+                try {
+                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Exception while put", e);
+                }
+        };
         List<String> uris = Arrays.asList(replicaNodes);
-        CompletableFuture local = CompletableFuture.runAsync(() -> {
+        CompletableFuture<Void> local = CompletableFuture.runAsync(() -> {
             if (uris.contains(nodes.getId())) {
                 try {
                     putWithTimestampMethodWrapper(key, rqst);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                    logger.log(Level.SEVERE, "Exception while put ", e);
                 }
             }
-        });
+        }).thenAccept(returnResult);
         List<HttpRequest> requests = createRequests(uris, id, methodDefiner);
-        List<CompletableFuture> futureList = requests.stream()
+        List<CompletableFuture<Void>> futureList = requests.stream()
                 .map(request -> client.sendAsync(request, ofByteArray())
                         .thenAccept(response -> {
                             if (response.statusCode() == 201)
                                 asks.incrementAndGet();
-                            if(asks.getPlain() >= acks)
-                                try {
-                                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                                } catch (IOException e) {
-                                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-                                }
+                            returnResult.accept(null);
                         }))
                 .collect(Collectors.toList());
         futureList.add(local);
@@ -154,40 +160,57 @@ public class Coordinators {
      * @param acks         to specify the amount of acks needed
      * @return Response value
      */
-    public Response coordinateGet(final String[] replicaNodes,
-                                  @NotNull final Request rqst,
-                                  final int acks) throws IOException {
+    private void coordinateGet(final String[] replicaNodes,
+                               @NotNull final HttpSession session,
+                               @NotNull final Request rqst,
+                               final int acks) throws IOException {
         final String id = rqst.getParameter("id=");
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        int asks = 0;
-        final List<TimestampRecord> responses = new ArrayList<>();
-        for (final String node : replicaNodes) {
-            try {
-                Response respGet;
-                if (node.equals(nodes.getId())) {
-                    respGet = getWithTimestampMethodWrapper(key);
-                } else {
-                    respGet = clusterClients.get(node)
-                            .get(ENTITY_HEADER + id, PROXY_HEADER);
+        final AtomicInteger asks = new AtomicInteger(0);
+        final boolean proxied = rqst.getHeader(PROXY_HEADER).equals("true");
+        final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
+        final List<String> uris = Arrays.asList(replicaNodes);
+        final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
+        Consumer<Void> returnResult = x -> {
+            if (asks.getPlain() >= acks) {
+                try {
+                    session.sendResponse(processResponses(replicaNodes, responses, proxied));
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Exception while get: ", e);
                 }
-                if (respGet.getStatus() == 404 && respGet.getBody().length == 0) {
-                    responses.add(TimestampRecord.getEmpty());
-                } else if (respGet.getStatus() == 500) {
-                    continue;
-                } else {
-                    responses.add(TimestampRecord.fromBytes(respGet.getBody()));
-                }
-                asks++;
-            } catch (HttpException | PoolException | InterruptedException e) {
-                logger.log(Level.SEVERE, "Exception while putting!", e);
             }
-        }
-        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
-        if (asks >= acks || proxied) {
-            return processResponses(replicaNodes, responses, proxied);
-        } else {
-            return new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY);
-        }
+        };
+
+        CompletableFuture<Void>  local = CompletableFuture.runAsync(() -> {
+            if (uris.contains(nodes.getId())) {
+                try {
+                    final Response localResponse = getWithTimestampMethodWrapper(key);
+                    if (localResponse.getBody().length == 0)
+                        responses.add(TimestampRecord.getEmpty());
+                    else
+                        responses.add(TimestampRecord.fromBytes(localResponse.getBody()));
+                    asks.incrementAndGet();
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                }
+            }
+        }).thenAccept(returnResult);
+
+        List<HttpRequest> requests = createRequests(uris, id, methodDefiner);
+        List<CompletableFuture<Void>> futureList = requests.stream()
+                .map(request -> client.sendAsync(request, ofByteArray())
+                        .thenAccept(response -> {
+                            if (response.statusCode() == 404 && response.body().length == 0) {
+                                responses.add(TimestampRecord.getEmpty());
+                            }
+                            if (response.statusCode() == 500) return;
+                            responses.add(TimestampRecord.fromBytes(response.body()));
+                            asks.incrementAndGet();
+                            returnResult.accept(null);
+                        }))
+                .collect(Collectors.toList());
+        futureList.add(local);
+        processError.accept(session, futureList);
     }
 
     private Response processResponses(final String[] replicaNodes,
@@ -243,14 +266,14 @@ public class Coordinators {
      * @param acks            to specify the amount of acks needed
      * @param session         to specify the session where to output messages
      */
-    public void coordinateRequest(final String[] replicaClusters,
-                                  final Request request,
-                                  final int acks,
-                                  final HttpSession session) throws IOException {
+    void coordinateRequest(final String[] replicaClusters,
+                           final Request request,
+                           final int acks,
+                           final HttpSession session) throws IOException {
         try {
             switch (request.getMethod()) {
                 case Request.METHOD_GET:
-                    session.sendResponse(coordinateGet(replicaClusters, request, acks));
+                    coordinateGet(replicaClusters, session, request, acks);
                     break;
                 case Request.METHOD_PUT:
                     coordinatePut(replicaClusters, session, request, acks);
@@ -270,34 +293,34 @@ public class Coordinators {
     private List<HttpRequest> createRequests(List<String> uris,
                                              String id,
                                              Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner) {
-        return  uris.stream()
+        return uris.stream()
                 .map(x -> x + ENTITY_HEADER + id)
                 .map(wrapper(URI::new))
                 .map(HttpRequest::newBuilder)
                 .map(x -> x.setHeader("X-OK-Proxy", "true"))
                 .map(methodDefiner)
-                .map(x -> x.timeout(Duration.of(3, SECONDS)))
+                .map(x -> x.timeout(Duration.of(5, SECONDS)))
                 .map(HttpRequest.Builder::build)
                 .collect(toList());
     }
 
-    private final BiConsumer<HttpSession, List<CompletableFuture>> processError = ((session, futureList) ->
+    private final BiConsumer<HttpSession, List<CompletableFuture<Void>>> processError = ((session, futureList) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
-            .exceptionally(x -> {
-                try {
-                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-                }
-                return null;
-            })
-            .thenAccept(x -> {
-                try {
-                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
-                }
-            }));
+                    .exceptionally(x -> {
+                        try {
+                            session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                        } catch (IOException e) {
+                            logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                        }
+                        return null;
+                    })
+                    .thenAccept(x -> {
+                        try {
+                            session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                        } catch (IOException e) {
+                            logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                        }
+                    }));
 
     // Its a wrapper to catch exceptions in stream
     @FunctionalInterface

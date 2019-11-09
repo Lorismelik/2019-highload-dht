@@ -70,3 +70,7 @@ tasks.withType<JavaCompile> {
 tasks.named<JavaCompile>("compileTestJava") {
     options.errorprone.isEnabled.set(false)
 }
+
+tasks.named<JavaCompile>("compileJava") {
+    options.errorprone.isEnabled.set(false)
+}

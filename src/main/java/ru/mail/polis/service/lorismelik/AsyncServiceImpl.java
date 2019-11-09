@@ -13,7 +13,6 @@ import one.nio.http.HttpSession;
 import one.nio.http.Path;
 import one.nio.http.Response;
 import one.nio.http.Request;
-import one.nio.http.HttpClient;
 import one.nio.net.Socket;
 
 import java.nio.ByteBuffer;
@@ -21,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 
 import java.io.IOException;
 
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 import java.util.Iterator;
@@ -46,10 +44,9 @@ public class AsyncServiceImpl extends HttpServer implements Service {
     /**
      * Create the HTTP Cluster server.
      *
-     * @param config         HTTP server configurations
-     * @param dao            to initialize the DAO instance within the server
-     * @param nodes          to represent cluster nodes
-     * @param clusterClients initialized cluster clients
+     * @param config HTTP server configurations
+     * @param dao    to initialize the DAO instance within the server
+     * @param nodes  to represent cluster nodes
      */
     public AsyncServiceImpl(final HttpServerConfig config,
                             @NotNull final DAO dao,
@@ -102,7 +99,7 @@ public class AsyncServiceImpl extends HttpServer implements Service {
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         if (proxied || nodes.getNodes().size() > 1) {
             final String[] replicaClusters = proxied ? new String[]{nodes.getId()}
-            : nodes.replicas(replicaFactor.getFrom(), key);
+                    : nodes.replicas(replicaFactor.getFrom(), key);
             clusterCoordinator.coordinateRequest(replicaClusters, request, replicaFactor.getAck(), session);
         } else {
             try {
