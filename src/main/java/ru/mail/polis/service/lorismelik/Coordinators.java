@@ -43,7 +43,6 @@ class Coordinators {
     private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
-    private static final String ENTITY_HEADER = "/v0/entity?id=";
 
     /**
      * Create the cluster coordinator instance.
@@ -61,6 +60,7 @@ class Coordinators {
      * Coordinate the delete among all clusters.
      *
      * @param replicaNodes to define the nodes where to create replicas
+     * @param session      http session to send response
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
@@ -69,15 +69,16 @@ class Coordinators {
                                   @NotNull final Request rqst,
                                   final int acks) {
         final String id = rqst.getParameter("id=");
+        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         Consumer<Void> returnResult = x -> {
-            if (asks.getPlain() >= acks)
+            if (asks.getPlain() >= acks || proxied)
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while delete ", e);
+                    logger.info("Out of response" + e);
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
@@ -105,13 +106,14 @@ class Coordinators {
         if (local != null) {
             futureList.add(local);
         }
-        processError.accept(session, futureList, acks, asks);
+        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     /**
      * Coordinate the put among all clusters.
      *
      * @param replicaNodes to define the nodes where to create replicas
+     * @param session      http session to send response
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
@@ -122,21 +124,21 @@ class Coordinators {
         final String id = rqst.getParameter("id=");
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
+        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         Consumer<Void> returnResult = x -> {
-            if (asks.getPlain() >= acks)
+            if ((asks.getPlain() >= acks || proxied))
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while put", e);
+                    logger.info("Out of response" + e);
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
             local = CompletableFuture.runAsync(() -> {
-
                 try {
                     putWithTimestampMethodWrapper(key, rqst);
                     asks.incrementAndGet();
@@ -157,16 +159,16 @@ class Coordinators {
         if (local != null) {
             futureList.add(local);
         }
-        processError.accept(session, futureList, acks, asks);
+        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     /**
      * Coordinate the get among all clusters.
      *
      * @param replicaNodes to define the nodes where to create replicas
+     * @param session      http session to send response
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
-     * @return Response value
      */
     private void coordinateGet(final String[] replicaNodes,
                                @NotNull final HttpSession session,
@@ -180,19 +182,17 @@ class Coordinators {
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         Consumer<Void> returnResult = x -> {
-            if (asks.getPlain() >= acks) {
+            if (asks.getPlain() >= acks || proxied) {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while get: ", e);
+                    logger.info("Out of response" + e);
                 }
             }
         };
         CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
             local = CompletableFuture.runAsync(() -> {
-
-                uris.remove(nodes.getId());
                 try {
                     final Response localResponse = getWithTimestampMethodWrapper(key);
                     if (localResponse.getBody().length == 0)
@@ -223,7 +223,7 @@ class Coordinators {
         if (local != null) {
             futureList.add(local);
         }
-        processError.accept(session, futureList, acks, asks);
+        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     private Response processResponses(final String[] replicaNodes,
@@ -303,9 +303,16 @@ class Coordinators {
         }
     }
 
+    /**
+     * Create list of requests which will be send to other nodes
+     *
+     * @param uris    addresses of other nodes
+     * @param rqst    http request which was accepted from client
+     * @param methodDefiner define http method of requests
+     */
     private List<HttpRequest> createRequests(List<String> uris,
                                              Request rqst,
-                                             Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner) {
+                                             Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
         return uris.stream()
                 .map(x -> x + rqst.getURI())
                 .map(wrapper(URI::new))
@@ -317,23 +324,42 @@ class Coordinators {
                 .collect(toList());
     }
 
-    private final MyConsumer<HttpSession, List<CompletableFuture<Void>>, Integer, AtomicInteger> processError = ((session, futureList, acks, asks) ->
+    /**
+     * Wrapper to avoid try/catch exceptions in a stream
+     *
+     * @param fe function in a stream, which can throw exception
+     */
+    private final MyConsumer<HttpSession, List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError = ((session, futureList, acks, asks, proxied) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
                     .thenAccept(x -> {
-                        if (asks.getPlain() < acks)
+                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
-                                logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                                logger.info("Out of response" + e);
                             }
+                    })
+                    .exceptionally(x -> {
+                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1))
+                            try {
+                                session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                            } catch (IOException e) {
+                                logger.info("Out of response" + e);
+                            }
+                        return null;
                     }));
 
-    // Its a wrapper to catch exceptions in stream
+
     @FunctionalInterface
     public interface FunctionWithException<T, R, E extends Exception> {
         R apply(T t) throws E;
     }
 
+    /**
+     * Wrapper to avoid try/catch exceptions in a stream
+     *
+     * @param fe function in a stream, which can throw exception
+     */
     private <T, R, E extends Exception>
     Function<T, R> wrapper(FunctionWithException<T, R, E> fe) {
         return arg -> {
@@ -346,7 +372,7 @@ class Coordinators {
     }
 
     @FunctionalInterface
-    public interface MyConsumer<T, U, R, Y> {
-        void accept(T t, U u, R r, Y y);
+    public interface MyConsumer<T, U, R, Y, C> {
+        void accept(T t, U u, R r, Y y, C c);
     }
 }
