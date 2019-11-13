@@ -65,7 +65,7 @@ class Coordinators {
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         Consumer<Void> returnResult = x -> {
-            if (asks.getPlain() >= acks || proxied)
+            if ((asks.getPlain() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
@@ -119,7 +119,7 @@ class Coordinators {
         Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         Consumer<Void> returnResult = x -> {
-            if ((asks.getPlain() >= acks || proxied))
+            if ((asks.getPlain() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
@@ -173,7 +173,7 @@ class Coordinators {
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         Consumer<Void> returnResult = x -> {
-            if (asks.getPlain() >= acks || proxied) {
+            if ((asks.getPlain() >= acks || proxied) && checkConnection(session)) {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
@@ -262,6 +262,9 @@ class Coordinators {
         return res.toBytes();
     }
 
+    private boolean checkConnection(@NotNull final HttpSession session) {
+        return session.checkStatus(System.currentTimeMillis(), 5000) != 1;
+    }
     /**
      * Coordinate the request among all clusters.
      *
@@ -323,7 +326,7 @@ class Coordinators {
     private final MyConsumer<HttpSession, List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError = ((session, futureList, acks, asks, proxied) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
                     .thenAccept(x -> {
-                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1))
+                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
@@ -331,7 +334,7 @@ class Coordinators {
                             }
                     })
                     .exceptionally(x -> {
-                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1))
+                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
