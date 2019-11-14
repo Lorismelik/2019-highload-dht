@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 
 import static java.net.http.HttpResponse.BodyHandlers.ofByteArray;
 import static java.time.temporal.ChronoUnit.SECONDS;
+import static java.util.logging.Level.SEVERE;
 import static java.util.stream.Collectors.toList;
 
 class Coordinators {
@@ -69,7 +70,7 @@ class Coordinators {
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.info("Out of response" + e);
+                    logger.log(SEVERE,"Out of response" + e);
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
@@ -80,7 +81,7 @@ class Coordinators {
                     deleteWithTimestampMethodWrapper(key);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while delete", e);
+                    logger.log(SEVERE, "Exception while delete", e);
                 }
 
             }).thenAccept(returnResult);
@@ -123,7 +124,7 @@ class Coordinators {
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.info("Out of response" + e);
+                    logger.log(SEVERE,"Out of response" + e);
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
@@ -134,7 +135,7 @@ class Coordinators {
                     putWithTimestampMethodWrapper(key, rqst);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while put ", e);
+                    logger.log(SEVERE, "Exception while put ", e);
                 }
             }).thenAccept(returnResult);
         }
@@ -177,7 +178,7 @@ class Coordinators {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
-                    logger.info("Out of response" + e);
+                    logger.log(SEVERE, "Out of response" + e);
                 }
             }
         };
@@ -192,7 +193,7 @@ class Coordinators {
                         responses.add(TimestampRecord.fromBytes(localResponse.getBody()));
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Exception while deleting by proxy: ", e);
+                    logger.log(SEVERE, "Exception while deleting by proxy: ", e);
                 }
 
             }).thenAccept(returnResult);
@@ -330,7 +331,7 @@ class Coordinators {
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
-                                logger.info("Out of response" + e);
+                                logger.log(SEVERE,"Out of response" + e);
                             }
                     })
                     .exceptionally(x -> {
@@ -338,7 +339,7 @@ class Coordinators {
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
-                                logger.info("Out of response" + e);
+                                logger.log(SEVERE,"Out of response" + e);
                             }
                         return null;
                     }));
