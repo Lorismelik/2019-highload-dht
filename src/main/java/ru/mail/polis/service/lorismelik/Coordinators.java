@@ -3,6 +3,7 @@ package ru.mail.polis.service.lorismelik;
 import one.nio.http.HttpSession;
 import one.nio.http.Request;
 import one.nio.http.Response;
+import one.nio.net.Session;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.TimestampRecord;
@@ -35,6 +36,7 @@ class Coordinators {
     private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
+    private static final long  KEEP_ALIVE = 5000;
 
     /**
      * Create the cluster coordinator instance.
@@ -56,17 +58,17 @@ class Coordinators {
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
-    private void coordinateDelete(final String[] replicaNodes,
+    private  void coordinateDelete(final String[] replicaNodes,
                                   @NotNull final HttpSession session,
                                   @NotNull final Request rqst,
                                   final int acks) {
         final String id = rqst.getParameter("id=");
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final AtomicInteger asks = new AtomicInteger(0);
+        AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         Consumer<Void> returnResult = x -> {
-            if ((asks.getPlain() >= acks || proxied) && checkConnection(session))
+            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
@@ -120,7 +122,7 @@ class Coordinators {
         Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         Consumer<Void> returnResult = x -> {
-            if ((asks.getPlain() >= acks || proxied) && checkConnection(session))
+            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
@@ -174,7 +176,7 @@ class Coordinators {
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         Consumer<Void> returnResult = x -> {
-            if ((asks.getPlain() >= acks || proxied) && checkConnection(session)) {
+            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session)) {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
@@ -264,7 +266,7 @@ class Coordinators {
     }
 
     private boolean checkConnection(@NotNull final HttpSession session) {
-        return session.checkStatus(System.currentTimeMillis(), 5000) != 1;
+        return session.checkStatus(System.currentTimeMillis(), KEEP_ALIVE) != Session.IDLE;
     }
     /**
      * Coordinate the request among all clusters.
@@ -327,7 +329,7 @@ class Coordinators {
     private final MyConsumer<HttpSession, List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError = ((session, futureList, acks, asks, proxied) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
                     .thenAccept(x -> {
-                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1) && checkConnection(session))
+                        if (asks.getAcquire() < acks && !(proxied && asks.getAcquire() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
@@ -335,7 +337,7 @@ class Coordinators {
                             }
                     })
                     .exceptionally(x -> {
-                        if (asks.getPlain() < acks && !(proxied && asks.getPlain() == 1) && checkConnection(session))
+                        if (asks.getAcquire() < acks && !(proxied && asks.getAcquire() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {

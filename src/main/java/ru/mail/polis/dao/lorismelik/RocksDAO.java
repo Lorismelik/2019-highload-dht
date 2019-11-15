@@ -41,6 +41,9 @@ public class RocksDAO implements DAO {
         try {
             final byte[] packedKey = ByteBufferUtils.shiftBytes(keys);
             final byte[] valueByteArray = db.get(packedKey);
+            if (valueByteArray.length == 0) {
+                return TimestampRecord.getEmpty();
+            }
             return TimestampRecord.fromBytes(valueByteArray);
         } catch (RocksDBException exception) {
             throw new RockException("Error while get", exception);
