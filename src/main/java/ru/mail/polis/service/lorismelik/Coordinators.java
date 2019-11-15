@@ -72,7 +72,7 @@ class Coordinators {
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.log(SEVERE,"Out of response" + e);
+                    session.close();
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
@@ -126,7 +126,7 @@ class Coordinators {
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
-                    logger.log(SEVERE,"Out of response" + e);
+                    session.close();
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
@@ -180,7 +180,7 @@ class Coordinators {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
-                    logger.log(SEVERE, "Out of response" + e);
+                    session.close();
                 }
             }
         };
@@ -266,7 +266,7 @@ class Coordinators {
     }
 
     private boolean checkConnection(@NotNull final HttpSession session) {
-        return session.checkStatus(System.currentTimeMillis(), KEEP_ALIVE) != Session.IDLE;
+        return session.checkStatus(System.currentTimeMillis(), KEEP_ALIVE) == Session.ACTIVE;
     }
     /**
      * Coordinate the request among all clusters.
@@ -333,7 +333,7 @@ class Coordinators {
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
-                                logger.log(SEVERE,"Out of response" + e);
+                                session.close();
                             }
                     })
                     .exceptionally(x -> {
@@ -341,7 +341,7 @@ class Coordinators {
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
-                                logger.log(SEVERE,"Out of response" + e);
+                                session.close();
                             }
                         return null;
                     }));
