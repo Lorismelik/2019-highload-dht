@@ -65,7 +65,7 @@ class Coordinators {
         final String id = rqst.getParameter("id=");
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        AtomicInteger asks = new AtomicInteger(0);
+        final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         Consumer<Void> returnResult = x -> {
             if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))

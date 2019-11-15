@@ -63,7 +63,7 @@ public class TimestampRecord {
      * @return timestamp record instance
      */
     public static TimestampRecord fromBytes(@Nullable final byte[] bytes) {
-        if (bytes == null || bytes.length == 0) {
+        if (bytes == null) {
             return new TimestampRecord(-1, null, RecordType.ABSENT);
         }
         final var buffer = ByteBuffer.wrap(bytes);
@@ -88,6 +88,7 @@ public class TimestampRecord {
         if (isValue()) {
             byteBuff.put(value.duplicate());
         }
+        byteBuff.rewind();
         final byte[] result = new byte[byteBuff.remaining()];
         byteBuff.get(result);
         return result;
