@@ -326,7 +326,9 @@ class Coordinators {
      *
      * @param fe function in a stream, which can throw exception
      */
-    private final MyConsumer<HttpSession, List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError = ((session, futureList, acks, asks, proxied) ->
+    private final MyConsumer<HttpSession,
+            List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError =
+            ((session, futureList, acks, asks, proxied) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
                     .thenAccept(x -> {
                         if (asks.getAcquire() < acks && !(proxied && asks.getAcquire() == 1) && checkConnection(session))
