@@ -46,9 +46,9 @@ public class Utils {
      * @param rqst    http request which was accepted from client
      * @param methodDefiner define http method of requests
      */
-    public static List<HttpRequest> createRequests(List<String> uris,
-                                             Request rqst,
-                                             Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
+    public static List<HttpRequest> createRequests(final List<String> uris,
+                                                   final Request rqst,
+                                                   final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
         return uris.stream()
                 .map(x -> x + rqst.getURI())
                 .map(Utils.wrapper(URI::new))

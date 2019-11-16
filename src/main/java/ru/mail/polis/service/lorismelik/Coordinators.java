@@ -52,7 +52,7 @@ class Coordinators {
                           final HttpSession session,
                           final Integer neededAcks) {
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
-        if (uris.size() != 0) {
+        if (!uris.isEmpty()) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
@@ -211,7 +211,7 @@ class Coordinators {
                 }
         }
         returnResult.accept(null);
-        if (uris.size() != 0) {
+        if (!uris.isEmpty()) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
