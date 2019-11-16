@@ -11,28 +11,7 @@ import java.util.function.Function;
 import static java.time.temporal.ChronoUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
-public class Utils {
-
-    @FunctionalInterface
-    public interface FunctionWithException<T, R, E extends Exception> {
-        R apply(T t) throws E;
-    }
-
-    /**
-     * Wrapper to avoid try/catch exceptions in a stream
-     *
-     * @param fe function in a stream, which can throw exception
-     */
-    private static <T, R, E extends Exception>
-    Function<T, R> wrapper(FunctionWithException<T, R, E> fe) {
-        return arg -> {
-            try {
-                return fe.apply(arg);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        };
-    }
+public final class Utils {
 
     @FunctionalInterface
     public interface MyConsumer<T, U, R, Y, C> {
@@ -51,7 +30,13 @@ public class Utils {
                                                    final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
         return uris.stream()
                 .map(x -> x + rqst.getURI())
-                .map(Utils.wrapper(URI::new))
+                .map(x -> {
+                    try {
+                        return URI.create(x);
+                    } catch (IllegalArgumentException e) {
+                        throw new RuntimeException(e);
+                    }
+                })
                 .map(HttpRequest::newBuilder)
                 .map(x -> x.setHeader("X-OK-Proxy", "true"))
                 .map(methodDefiner)
