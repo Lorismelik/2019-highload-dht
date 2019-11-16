@@ -16,21 +16,15 @@
 
 package ru.mail.polis.service;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
-import one.nio.http.HttpClient;
 import one.nio.http.HttpServerConfig;
-import one.nio.net.ConnectionString;
 import one.nio.server.AcceptorConfig;
 import org.jetbrains.annotations.NotNull;
-
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.service.lorismelik.AsyncServiceImpl;
 import ru.mail.polis.service.lorismelik.NodeDescriptor;
+
+import java.io.IOException;
+import java.util.Set;
 
 /**
  * Constructs {@link Service} instances.

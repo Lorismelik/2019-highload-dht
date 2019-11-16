@@ -47,16 +47,16 @@ class Coordinators {
             }
     };
 
-    private void processPutAndDeleteRequest(ArrayList<String> uris,
-                          Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
-                          Request rqst,
-                          Integer successCode,
-                          AtomicInteger receivedAcks,
-                          Consumer<Void> returnResult,
-                          HttpSession session,
-                          Integer neededAcks,
-                          Boolean proxied) {
-        if (uris.size() > 0) {
+    private void processPutAndDeleteRequest(final ArrayList<String> uris,
+                          final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
+                          final Request rqst,
+                          final Integer successCode,
+                          final AtomicInteger receivedAcks,
+                          final Consumer<Void> returnResult,
+                          final HttpSession session,
+                          final Integer neededAcks) {
+        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
+        if (uris.size() != 0) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
@@ -123,7 +123,7 @@ class Coordinators {
                 }
         }
         returnResult.accept(null);
-        processPutAndDeleteRequest(uris, methodDefiner, rqst, 202, asks, returnResult, session, acks, proxied);
+        processPutAndDeleteRequest(uris, methodDefiner, rqst, 202, asks, returnResult, session, acks);
     }
 
     /**
@@ -166,7 +166,7 @@ class Coordinators {
                 }
         }
         returnResult.accept(null);
-        processPutAndDeleteRequest(uris, methodDefiner, rqst, 201, asks, returnResult, session, acks, proxied);
+        processPutAndDeleteRequest(uris, methodDefiner, rqst, 201, asks, returnResult, session, acks);
     }
 
     /**
