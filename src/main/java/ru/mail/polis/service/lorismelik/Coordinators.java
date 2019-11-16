@@ -32,7 +32,6 @@ import static java.util.stream.Collectors.toList;
 class Coordinators {
     private final RocksDAO dao;
     private final NodeDescriptor nodes;
-    private static final Logger logger = Logger.getLogger(Coordinators.class.getName());
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
     private static final long  KEEP_ALIVE = 5000;
@@ -75,31 +74,31 @@ class Coordinators {
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
-        CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
-            local = CompletableFuture.runAsync(() -> {
                 try {
                     deleteWithTimestampMethodWrapper(key);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(SEVERE, "Exception while delete", e);
+                    try {
+                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                    } catch (IOException exp) {
+                        session.close();
+                    }
                 }
-
-            }).thenAccept(returnResult);
         }
-        List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-        List<CompletableFuture<Void>> futureList = requests.stream()
-                .map(request -> client.sendAsync(request, ofByteArray())
-                        .thenAccept(response -> {
-                            if (response.statusCode() == 202)
-                                asks.incrementAndGet();
-                            returnResult.accept(null);
-                        }))
-                .collect(Collectors.toList());
-        if (local != null) {
-            futureList.add(local);
+        returnResult.accept(null);
+        if (uris.size() > 0) {
+            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
+            List<CompletableFuture<Void>> futureList = requests.stream()
+                    .map(request -> client.sendAsync(request, ofByteArray())
+                            .thenAccept(response -> {
+                                if (response.statusCode() == 202)
+                                    asks.incrementAndGet();
+                                returnResult.accept(null);
+                            }))
+                    .collect(Collectors.toList());
+            processError.accept(session, futureList, acks, asks, proxied);
         }
-        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     /**
@@ -129,30 +128,31 @@ class Coordinators {
                 }
         };
         ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
-        CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
-            local = CompletableFuture.runAsync(() -> {
                 try {
                     putWithTimestampMethodWrapper(key, rqst);
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(SEVERE, "Exception while put ", e);
+                    try {
+                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                    } catch (IOException exp) {
+                        session.close();
+                    }
                 }
-            }).thenAccept(returnResult);
         }
-        List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-        List<CompletableFuture<Void>> futureList = requests.stream()
-                .map(request -> client.sendAsync(request, ofByteArray())
-                        .thenAccept(response -> {
-                            if (response.statusCode() == 201)
-                                asks.incrementAndGet();
-                            returnResult.accept(null);
-                        }))
-                .collect(Collectors.toList());
-        if (local != null) {
-            futureList.add(local);
+        returnResult.accept(null);
+        if (uris.size() > 0) {
+            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
+            List<CompletableFuture<Void>> futureList = requests.stream()
+                    .map(request -> client.sendAsync(request, ofByteArray())
+                            .thenAccept(response -> {
+                                if (response.statusCode() == 201)
+                                    asks.incrementAndGet();
+                                returnResult.accept(null);
+                            }))
+                    .collect(Collectors.toList());
+            processError.accept(session, futureList, acks, asks, proxied);
         }
-        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     /**
@@ -183,9 +183,7 @@ class Coordinators {
                 }
             }
         };
-        CompletableFuture<Void> local = null;
         if (uris.remove(nodes.getId())) {
-            local = CompletableFuture.runAsync(() -> {
                 try {
                     final Response localResponse = getWithTimestampMethodWrapper(key);
                     if (localResponse.getBody().length == 0)
@@ -194,29 +192,30 @@ class Coordinators {
                         responses.add(TimestampRecord.fromBytes(localResponse.getBody()));
                     asks.incrementAndGet();
                 } catch (IOException e) {
-                    logger.log(SEVERE, "Exception while deleting by proxy: ", e);
+                    try {
+                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                    } catch (IOException exp) {
+                        session.close();
+                    }
                 }
-
-            }).thenAccept(returnResult);
         }
-
-        List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-        List<CompletableFuture<Void>> futureList = requests.stream()
-                .map(request -> client.sendAsync(request, ofByteArray())
-                        .thenAccept(response -> {
-                            if (response.statusCode() == 404 && response.body().length == 0) {
-                                responses.add(TimestampRecord.getEmpty());
-                            }
-                            if (response.statusCode() == 500) return;
-                            responses.add(TimestampRecord.fromBytes(response.body()));
-                            asks.incrementAndGet();
-                            returnResult.accept(null);
-                        }))
-                .collect(Collectors.toList());
-        if (local != null) {
-            futureList.add(local);
+        returnResult.accept(null);
+        if (uris.size() > 0) {
+            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
+            List<CompletableFuture<Void>> futureList = requests.stream()
+                    .map(request -> client.sendAsync(request, ofByteArray())
+                            .thenAccept(response -> {
+                                if (response.statusCode() == 404 && response.body().length == 0) {
+                                    responses.add(TimestampRecord.getEmpty());
+                                }
+                                if (response.statusCode() == 500) return;
+                                responses.add(TimestampRecord.fromBytes(response.body()));
+                                asks.incrementAndGet();
+                                returnResult.accept(null);
+                            }))
+                    .collect(Collectors.toList());
+            processError.accept(session, futureList, acks, asks, proxied);
         }
-        processError.accept(session, futureList, acks, asks, proxied);
     }
 
     private Response processResponses(final String[] replicaNodes,
