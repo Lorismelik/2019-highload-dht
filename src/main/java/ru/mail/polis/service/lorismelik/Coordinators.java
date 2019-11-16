@@ -57,17 +57,13 @@ class Coordinators {
                 );
     }
 
-    private void processPutAndDeleteRequest(final List<String> uris,
-                                            final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
-                                            final Request rqst,
+    private void processPutAndDeleteRequest(final List<HttpRequest> requests,
                                             final Integer successCode,
                                             final AtomicInteger receivedAcks,
                                             final Consumer<Void> returnResult,
                                             final HttpSession session,
                                             final Integer neededAcks) {
-        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
-        if (!uris.isEmpty()) {
-            final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+        final boolean proxied = requests.isEmpty();
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
@@ -77,7 +73,6 @@ class Coordinators {
                             }))
                     .collect(Collectors.toList());
             checkResponses(futureList, session, neededAcks, receivedAcks, proxied);
-        }
     }
 
     /**
@@ -131,7 +126,10 @@ class Coordinators {
             }
         }
         returnResult.accept(null);
-        processPutAndDeleteRequest(uris, methodDefiner, rqst, 202, asks, returnResult, session, acks);
+        final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+        if (!uris.isEmpty()) {
+            processPutAndDeleteRequest(requests,202, asks, returnResult, session, acks);
+        }
     }
 
     /**
@@ -174,7 +172,10 @@ class Coordinators {
             }
         }
         returnResult.accept(null);
-        processPutAndDeleteRequest(uris, methodDefiner, rqst, 201, asks, returnResult, session, acks);
+        final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+        if (!uris.isEmpty()) {
+            processPutAndDeleteRequest(requests, 201, asks, returnResult, session, acks);
+        }
     }
 
     /**
@@ -208,8 +209,7 @@ class Coordinators {
         if (uris.remove(nodes.getId())) {
             try {
                 try {
-                    final byte[] res = copyAndExtractWithTimestampFromByteBuffer(key);
-                    responses.add(TimestampRecord.fromBytes(res));
+                    responses.add(TimestampRecord.fromBytes(copyAndExtractWithTimestampFromByteBuffer(key)));
                 } catch (NoSuchElementException exp) {
                     responses.add(TimestampRecord.getEmpty());
                 }

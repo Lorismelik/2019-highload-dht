@@ -39,7 +39,7 @@ public abstract class Utils {
                 .collect(toList());
     }
 
-    private static URI createURI(String s) {
+    private static URI createURI(final String s) {
         try {
             return URI.create(s);
         } catch (IllegalArgumentException e) {
