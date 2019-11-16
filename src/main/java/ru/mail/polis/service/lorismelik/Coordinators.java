@@ -21,7 +21,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -328,10 +327,10 @@ class Coordinators {
      */
     private final MyConsumer<HttpSession,
             List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError =
-            ((session, futureList, acks, asks, proxied) ->
+            ((session, futureList, neededAcks, receivedAcks, proxied) ->
             CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
                     .thenAccept(x -> {
-                        if (asks.getAcquire() < acks && !(proxied && asks.getAcquire() == 1) && checkConnection(session))
+                        if (receivedAcks.getAcquire() < neededAcks && !(proxied && receivedAcks.getAcquire() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
@@ -339,7 +338,7 @@ class Coordinators {
                             }
                     })
                     .exceptionally(x -> {
-                        if (asks.getAcquire() < acks && !(proxied && asks.getAcquire() == 1) && checkConnection(session))
+                        if (receivedAcks.getAcquire() < neededAcks && !(proxied && receivedAcks.getAcquire() == 1) && checkConnection(session))
                             try {
                                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
                             } catch (IOException e) {
