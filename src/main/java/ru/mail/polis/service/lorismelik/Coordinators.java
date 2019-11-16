@@ -43,14 +43,28 @@ class Coordinators {
             }
     };
 
+    private void checkResponses(final List<CompletableFuture<Void>> futureList,
+                                final HttpSession session,
+                                final Integer neededAcks,
+                                final AtomicInteger receivedAcks,
+                                final Boolean proxied) {
+        CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
+                .thenAccept(x -> processError.accept(session, futureList, neededAcks, receivedAcks, proxied))
+                .exceptionally(x -> {
+                            processError.accept(session, futureList, neededAcks, receivedAcks, proxied);
+                            return null;
+                        }
+                );
+    }
+
     private void processPutAndDeleteRequest(final List<String> uris,
-                          final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
-                          final Request rqst,
-                          final Integer successCode,
-                          final AtomicInteger receivedAcks,
-                          final Consumer<Void> returnResult,
-                          final HttpSession session,
-                          final Integer neededAcks) {
+                                            final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
+                                            final Request rqst,
+                                            final Integer successCode,
+                                            final AtomicInteger receivedAcks,
+                                            final Consumer<Void> returnResult,
+                                            final HttpSession session,
+                                            final Integer neededAcks) {
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         if (!uris.isEmpty()) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
@@ -62,12 +76,10 @@ class Coordinators {
                                 returnResult.accept(null);
                             }))
                     .collect(Collectors.toList());
-            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
-                    .thenAccept(x -> processError.accept(session, futureList, neededAcks, receivedAcks, proxied))
-                    .exceptionally(x -> { processError.accept(session, futureList, neededAcks, receivedAcks, proxied); return null;});
+            checkResponses(futureList, session, neededAcks, receivedAcks, proxied);
         }
-
     }
+
     /**
      * Create the cluster coordinator instance.
      *
@@ -107,16 +119,16 @@ class Coordinators {
         };
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
+            try {
+                dao.removeRecordWithTimestamp(key);
+                asks.incrementAndGet();
+            } catch (IOException e) {
                 try {
-                    dao.removeRecordWithTimestamp(key);
-                    asks.incrementAndGet();
-                } catch (IOException e) {
-                    try {
-                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                    } catch (IOException exp) {
-                        session.close();
-                    }
+                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                } catch (IOException exp) {
+                    session.close();
                 }
+            }
         }
         returnResult.accept(null);
         processPutAndDeleteRequest(uris, methodDefiner, rqst, 202, asks, returnResult, session, acks);
@@ -150,16 +162,16 @@ class Coordinators {
         };
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
+            try {
+                dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(rqst.getBody()));
+                asks.incrementAndGet();
+            } catch (IOException e) {
                 try {
-                    dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(rqst.getBody()));
-                    asks.incrementAndGet();
-                } catch (IOException e) {
-                    try {
-                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                    } catch (IOException exp) {
-                        session.close();
-                    }
+                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                } catch (IOException exp) {
+                    session.close();
                 }
+            }
         }
         returnResult.accept(null);
         processPutAndDeleteRequest(uris, methodDefiner, rqst, 201, asks, returnResult, session, acks);
@@ -194,21 +206,21 @@ class Coordinators {
             }
         };
         if (uris.remove(nodes.getId())) {
+            try {
                 try {
-                    try {
-                        final byte[] res = copyAndExtractWithTimestampFromByteBuffer(key);
-                        responses.add(TimestampRecord.fromBytes(res));
-                    } catch (NoSuchElementException exp) {
-                        responses.add(TimestampRecord.getEmpty());
-                    }
-                    asks.incrementAndGet();
-                } catch (IOException e) {
-                    try {
-                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                    } catch (IOException exp) {
-                        session.close();
-                    }
+                    final byte[] res = copyAndExtractWithTimestampFromByteBuffer(key);
+                    responses.add(TimestampRecord.fromBytes(res));
+                } catch (NoSuchElementException exp) {
+                    responses.add(TimestampRecord.getEmpty());
                 }
+                asks.incrementAndGet();
+            } catch (IOException e) {
+                try {
+                    session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                } catch (IOException exp) {
+                    session.close();
+                }
+            }
         }
         returnResult.accept(null);
         if (!uris.isEmpty()) {
@@ -225,9 +237,7 @@ class Coordinators {
                                 returnResult.accept(null);
                             }))
                     .collect(Collectors.toList());
-            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
-                    .thenAccept(x -> processError.accept(session, futureList, acks, asks, proxied))
-                    .exceptionally(x -> { processError.accept(session, futureList, acks, asks, proxied); return null;});
+            checkResponses(futureList, session, acks, asks, proxied);
         }
     }
 

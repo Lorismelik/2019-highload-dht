@@ -11,7 +11,7 @@ import java.util.function.Function;
 import static java.time.temporal.ChronoUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 
-public final class Utils {
+public abstract class Utils {
 
     @FunctionalInterface
     public interface MyConsumer<T, U, R, Y, C> {
@@ -30,18 +30,20 @@ public final class Utils {
                                                    final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
         return uris.stream()
                 .map(x -> x + rqst.getURI())
-                .map(x -> {
-                    try {
-                        return URI.create(x);
-                    } catch (IllegalArgumentException e) {
-                        throw new RuntimeException(e);
-                    }
-                })
+                .map(Utils::createURI)
                 .map(HttpRequest::newBuilder)
                 .map(x -> x.setHeader("X-OK-Proxy", "true"))
                 .map(methodDefiner)
                 .map(x -> x.timeout(Duration.of(5, SECONDS)))
                 .map(HttpRequest.Builder::build)
                 .collect(toList());
+    }
+
+    private static URI createURI(String s) {
+        try {
+            return URI.create(s);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
