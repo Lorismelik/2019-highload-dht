@@ -5,29 +5,24 @@ import one.nio.http.Request;
 import one.nio.http.Response;
 import one.nio.net.Session;
 import org.jetbrains.annotations.NotNull;
+import ru.mail.polis.Utils;
 import ru.mail.polis.dao.DAO;
 import ru.mail.polis.dao.TimestampRecord;
 import ru.mail.polis.dao.lorismelik.RocksDAO;
 
 import java.io.IOException;
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static java.net.http.HttpResponse.BodyHandlers.ofByteArray;
-import static java.time.temporal.ChronoUnit.SECONDS;
-import static java.util.logging.Level.SEVERE;
-import static java.util.stream.Collectors.toList;
 
 class Coordinators {
     private final RocksDAO dao;
@@ -56,7 +51,7 @@ class Coordinators {
      * @param rqst         to define request
      * @param acks         to specify the amount of acks needed
      */
-    private  void coordinateDelete(final String[] replicaNodes,
+    private void coordinateDelete(final String[] replicaNodes,
                                   @NotNull final HttpSession session,
                                   @NotNull final Request rqst,
                                   final int acks) {
@@ -65,7 +60,7 @@ class Coordinators {
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
-        Consumer<Void> returnResult = x -> {
+        final Consumer<Void> returnResult = x -> {
             if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
@@ -73,7 +68,7 @@ class Coordinators {
                     session.close();
                 }
         };
-        ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
+        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
                 try {
                     deleteWithTimestampMethodWrapper(key);
@@ -88,8 +83,8 @@ class Coordinators {
         }
         returnResult.accept(null);
         if (uris.size() > 0) {
-            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-            List<CompletableFuture<Void>> futureList = requests.stream()
+            final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+            final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
                                 if (response.statusCode() == 202)
@@ -97,7 +92,9 @@ class Coordinators {
                                 returnResult.accept(null);
                             }))
                     .collect(Collectors.toList());
-            processError.accept(session, futureList, acks, asks, proxied);
+            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
+                    .thenAccept(x -> processError.accept(session, futureList, acks, asks, proxied))
+                    .exceptionally(x -> { processError.accept(session, futureList, acks, asks, proxied); return null;});
         }
     }
 
@@ -117,9 +114,9 @@ class Coordinators {
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
-        Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
+        final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
-        Consumer<Void> returnResult = x -> {
+        final Consumer<Void> returnResult = x -> {
             if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
@@ -127,7 +124,7 @@ class Coordinators {
                     session.close();
                 }
         };
-        ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
+        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
                 try {
                     putWithTimestampMethodWrapper(key, rqst);
@@ -142,8 +139,8 @@ class Coordinators {
         }
         returnResult.accept(null);
         if (uris.size() > 0) {
-            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-            List<CompletableFuture<Void>> futureList = requests.stream()
+            final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+            final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
                                 if (response.statusCode() == 201)
@@ -151,7 +148,9 @@ class Coordinators {
                                 returnResult.accept(null);
                             }))
                     .collect(Collectors.toList());
-            processError.accept(session, futureList, acks, asks, proxied);
+            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
+                    .thenAccept(x -> processError.accept(session, futureList, acks, asks, proxied))
+                    .exceptionally(x -> { processError.accept(session, futureList, acks, asks, proxied); return null;});
         }
     }
 
@@ -172,9 +171,9 @@ class Coordinators {
         final AtomicInteger asks = new AtomicInteger(0);
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
-        ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
+        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
-        Consumer<Void> returnResult = x -> {
+        final Consumer<Void> returnResult = x -> {
             if ((asks.getAcquire() >= acks || proxied) && checkConnection(session)) {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
@@ -201,8 +200,8 @@ class Coordinators {
         }
         returnResult.accept(null);
         if (uris.size() > 0) {
-            List<HttpRequest> requests = createRequests(uris, rqst, methodDefiner);
-            List<CompletableFuture<Void>> futureList = requests.stream()
+            final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+            final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
                                 if (response.statusCode() == 404 && response.body().length == 0) {
@@ -214,7 +213,10 @@ class Coordinators {
                                 returnResult.accept(null);
                             }))
                     .collect(Collectors.toList());
-            processError.accept(session, futureList, acks, asks, proxied);
+            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
+                    .thenAccept(x -> processError.accept(session, futureList, acks, asks, proxied))
+                    .exceptionally(x -> { processError.accept(session, futureList, acks, asks, proxied); return null;});
+
         }
     }
 
@@ -298,78 +300,27 @@ class Coordinators {
         }
     }
 
-    /**
-     * Create list of requests which will be send to other nodes
-     *
-     * @param uris    addresses of other nodes
-     * @param rqst    http request which was accepted from client
-     * @param methodDefiner define http method of requests
-     */
-    private List<HttpRequest> createRequests(List<String> uris,
-                                             Request rqst,
-                                             Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner)  {
-        return uris.stream()
-                .map(x -> x + rqst.getURI())
-                .map(wrapper(URI::new))
-                .map(HttpRequest::newBuilder)
-                .map(x -> x.setHeader("X-OK-Proxy", "true"))
-                .map(methodDefiner)
-                .map(x -> x.timeout(Duration.of(5, SECONDS)))
-                .map(HttpRequest.Builder::build)
-                .collect(toList());
-    }
+
 
     /**
      * Wrapper to avoid try/catch exceptions in a stream
      *
      * @param fe function in a stream, which can throw exception
      */
-    private final MyConsumer<HttpSession,
-            List<CompletableFuture<Void>>, Integer, AtomicInteger, Boolean> processError =
-            ((session, futureList, neededAcks, receivedAcks, proxied) ->
-            CompletableFuture.allOf(futureList.toArray(CompletableFuture<?>[]::new))
-                    .thenAccept(x -> {
-                        if (receivedAcks.getAcquire() < neededAcks && !(proxied && receivedAcks.getAcquire() == 1) && checkConnection(session))
-                            try {
-                                session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                            } catch (IOException e) {
-                                session.close();
-                            }
-                    })
-                    .exceptionally(x -> {
-                        if (receivedAcks.getAcquire() < neededAcks && !(proxied && receivedAcks.getAcquire() == 1) && checkConnection(session))
-                            try {
-                                session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
-                            } catch (IOException e) {
-                                session.close();
-                            }
-                        return null;
-                    }));
+    private final Utils.MyConsumer<HttpSession,
+            List<CompletableFuture<Void>>,
+            Integer,
+            AtomicInteger,
+            Boolean> processError = (session, futureList, neededAcks, receivedAcks, proxied) -> {
+                if (receivedAcks.getAcquire() < neededAcks
+                        && !(proxied && receivedAcks.getAcquire() == 1)
+                        && checkConnection(session))
+                    try {
+                        session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
+                    } catch (IOException e) {
+                        session.close();
+                    }
+            };
 
 
-    @FunctionalInterface
-    public interface FunctionWithException<T, R, E extends Exception> {
-        R apply(T t) throws E;
-    }
-
-    /**
-     * Wrapper to avoid try/catch exceptions in a stream
-     *
-     * @param fe function in a stream, which can throw exception
-     */
-    private <T, R, E extends Exception>
-    Function<T, R> wrapper(FunctionWithException<T, R, E> fe) {
-        return arg -> {
-            try {
-                return fe.apply(arg);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        };
-    }
-
-    @FunctionalInterface
-    public interface MyConsumer<T, U, R, Y, C> {
-        void accept(T t, U u, R r, Y y, C c);
-    }
 }
