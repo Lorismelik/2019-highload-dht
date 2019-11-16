@@ -3,7 +3,6 @@ package ru.mail.polis.service.lorismelik;
 import one.nio.http.HttpSession;
 import one.nio.http.Request;
 import one.nio.http.Response;
-import one.nio.net.Session;
 import org.jetbrains.annotations.NotNull;
 import ru.mail.polis.Utils;
 import ru.mail.polis.dao.DAO;
@@ -29,8 +28,6 @@ class Coordinators {
     private final NodeDescriptor nodes;
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String PROXY_HEADER = "X-OK-Proxy: True";
-    private static final long  KEEP_ALIVE = 5000;
-
 
     private final Utils.MyConsumer<HttpSession,
             List<CompletableFuture<Void>>,
@@ -38,8 +35,7 @@ class Coordinators {
             AtomicInteger,
             Boolean> processError = (session, futureList, neededAcks, receivedAcks, proxied) -> {
         if (receivedAcks.getAcquire() < neededAcks
-                && !(proxied && receivedAcks.getAcquire() == 1)
-                && checkConnection(session))
+                && !(proxied && receivedAcks.getAcquire() == 1))
             try {
                 session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
             } catch (IOException e) {
@@ -47,7 +43,7 @@ class Coordinators {
             }
     };
 
-    private void processPutAndDeleteRequest(final ArrayList<String> uris,
+    private void processPutAndDeleteRequest(final List<String> uris,
                           final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner,
                           final Request rqst,
                           final Integer successCode,
@@ -102,7 +98,7 @@ class Coordinators {
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         final Consumer<Void> returnResult = x -> {
-            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
+            if (asks.getAcquire() >= acks || proxied)
                 try {
                     session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
                 } catch (IOException e) {
@@ -112,7 +108,7 @@ class Coordinators {
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
                 try {
-                    deleteWithTimestampMethodWrapper(key);
+                    dao.removeRecordWithTimestamp(key);
                     asks.incrementAndGet();
                 } catch (IOException e) {
                     try {
@@ -145,7 +141,7 @@ class Coordinators {
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         final Consumer<Void> returnResult = x -> {
-            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session))
+            if (asks.getAcquire() >= acks || proxied)
                 try {
                     session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
                 } catch (IOException e) {
@@ -155,7 +151,7 @@ class Coordinators {
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
                 try {
-                    putWithTimestampMethodWrapper(key, rqst);
+                    dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(rqst.getBody()));
                     asks.incrementAndGet();
                 } catch (IOException e) {
                     try {
@@ -189,7 +185,7 @@ class Coordinators {
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         final Consumer<Void> returnResult = x -> {
-            if ((asks.getAcquire() >= acks || proxied) && checkConnection(session)) {
+            if (asks.getAcquire() >= acks || proxied) {
                 try {
                     session.sendResponse(processResponses(replicaNodes, responses, proxied));
                 } catch (IOException e) {
@@ -199,11 +195,12 @@ class Coordinators {
         };
         if (uris.remove(nodes.getId())) {
                 try {
-                    final Response localResponse = getWithTimestampMethodWrapper(key);
-                    if (localResponse.getBody().length == 0)
+                    try {
+                        final byte[] res = copyAndExtractWithTimestampFromByteBuffer(key);
+                        responses.add(TimestampRecord.fromBytes(res));
+                    } catch (NoSuchElementException exp) {
                         responses.add(TimestampRecord.getEmpty());
-                    else
-                        responses.add(TimestampRecord.fromBytes(localResponse.getBody()));
+                    }
                     asks.incrementAndGet();
                 } catch (IOException e) {
                     try {
@@ -214,7 +211,7 @@ class Coordinators {
                 }
         }
         returnResult.accept(null);
-        if (uris.size() > 0) {
+        if (uris.size() != 0) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
@@ -253,24 +250,6 @@ class Coordinators {
         }
     }
 
-    private void putWithTimestampMethodWrapper(final ByteBuffer key, final Request request) throws IOException {
-        dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(request.getBody()));
-    }
-
-    private void deleteWithTimestampMethodWrapper(final ByteBuffer key) throws IOException {
-        dao.removeRecordWithTimestamp(key);
-    }
-
-    @NotNull
-    private Response getWithTimestampMethodWrapper(final ByteBuffer key) throws IOException {
-        try {
-            final byte[] res = copyAndExtractWithTimestampFromByteBuffer(key);
-            return new Response(Response.OK, res);
-        } catch (NoSuchElementException exp) {
-            return new Response(Response.NOT_FOUND, Response.EMPTY);
-        }
-    }
-
     private byte[] copyAndExtractWithTimestampFromByteBuffer(@NotNull final ByteBuffer key) throws IOException {
         final TimestampRecord res = dao.getRecordWithTimestamp(key);
         if (res.isEmpty()) {
@@ -279,9 +258,6 @@ class Coordinators {
         return res.toBytes();
     }
 
-    private boolean checkConnection(@NotNull final HttpSession session) {
-        return session.checkStatus(System.currentTimeMillis(), KEEP_ALIVE) == Session.ACTIVE;
-    }
     /**
      * Coordinate the request among all clusters.
      *
