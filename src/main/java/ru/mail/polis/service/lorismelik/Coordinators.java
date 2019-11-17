@@ -114,17 +114,13 @@ class Coordinators {
                                   @NotNull final HttpSession session,
                                   @NotNull final Request rqst,
                                   final int acks) {
-        final String id = rqst.getParameter("id=");
-        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final AtomicInteger asks = new AtomicInteger(0);
+        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         final Supplier<Response> successResponse = () -> new Response(Response.ACCEPTED, Response.EMPTY);
-        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
-        if (uris.remove(nodes.getId())) {
+        if (model.uris.remove(nodes.getId())) {
             try {
-                dao.removeRecordWithTimestamp(key);
-                asks.incrementAndGet();
+                dao.removeRecordWithTimestamp(model.key);
+                model.recievidAcks.incrementAndGet();
             } catch (IOException e) {
                 try {
                     session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
@@ -133,10 +129,10 @@ class Coordinators {
                 }
             }
         }
-        sendResult(successResponse, acks, asks, session, proxied);
-        final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
-        if (!uris.isEmpty()) {
-            processPutAndDeleteRequest(requests, asks, successResponse, session, acks);
+        sendResult(successResponse, acks, model.recievidAcks, session, model.proxied);
+        final List<HttpRequest> requests = Utils.createRequests(model.uris, rqst, methodDefiner);
+        if (!model.uris.isEmpty()) {
+            processPutAndDeleteRequest(requests, model.recievidAcks, successResponse, session, acks);
         }
     }
 
@@ -152,18 +148,14 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        final String id = rqst.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final AtomicInteger asks = new AtomicInteger(0);
-        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
+        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
-        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final Supplier<Response> successResponse = () -> new Response(Response.CREATED, Response.EMPTY);
-        if (uris.remove(nodes.getId())) {
+        if (model.uris.remove(nodes.getId())) {
             try {
-                dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(rqst.getBody()));
-                asks.incrementAndGet();
+                dao.upsertRecordWithTimestamp(model.key, ByteBuffer.wrap(rqst.getBody()));
+                model.recievidAcks.incrementAndGet();
             } catch (IOException e) {
                 try {
                     session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
@@ -172,10 +164,10 @@ class Coordinators {
                 }
             }
         }
-        this.sendResult(successResponse, acks, asks, session, proxied);
-        final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
-        if (!uris.isEmpty()) {
-            processPutAndDeleteRequest(requests, asks, successResponse, session, acks);
+        this.sendResult(successResponse, acks, model.recievidAcks, session, model.proxied);
+        final List<HttpRequest> requests = Utils.createRequests(model.uris, rqst, methodDefiner);
+        if (!model.uris.isEmpty()) {
+            processPutAndDeleteRequest(requests, model.recievidAcks, successResponse, session, acks);
         }
     }
 
@@ -191,17 +183,12 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        final String id = rqst.getParameter("id=");
-        final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-        final AtomicInteger asks = new AtomicInteger(0);
-        final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
+        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
-        final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
-        final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
-        if (uris.remove(nodes.getId())) {
+        if (model.uris.remove(nodes.getId())) {
             try {
-                getTimestampRecordFromLocalDao(key, responses);
-                asks.incrementAndGet();
+                getTimestampRecordFromLocalDao(model.key, model.responses);
+                model.recievidAcks.incrementAndGet();
             } catch (IOException e) {
                 try {
                     session.sendResponse(new Response(Response.GATEWAY_TIMEOUT, Response.EMPTY));
@@ -210,22 +197,26 @@ class Coordinators {
                 }
             }
         }
-        this.sendResult(() -> processResponses(responses, proxied), acks, asks, session, proxied);
-        if (!uris.isEmpty()) {
-            final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
+        this.sendResult(() -> processResponses(model.responses, model.proxied), acks, model.recievidAcks, session, model.proxied);
+        if (!model.uris.isEmpty()) {
+            final List<HttpRequest> requests = Utils.createRequests(model.uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
                                 if (response.statusCode() == 404 && response.body().length == 0) {
-                                    responses.add(TimestampRecord.getEmpty());
+                                    model.responses.add(TimestampRecord.getEmpty());
                                 }
                                 if (response.statusCode() == 500) return;
-                                responses.add(TimestampRecord.fromBytes(response.body()));
-                                asks.incrementAndGet();
-                                this.sendResult(() -> processResponses(responses, proxied), acks, asks, session, proxied);
+                                model.responses.add(TimestampRecord.fromBytes(response.body()));
+                                model.recievidAcks.incrementAndGet();
+                                this.sendResult(() -> processResponses(model.responses, model.proxied),
+                                        acks,
+                                        model.recievidAcks,
+                                        session,
+                                        model.proxied);
                             }))
                     .collect(Collectors.toList());
-            checkResponses(futureList, session, acks, asks, proxied);
+            checkResponses(futureList, session, acks, model.recievidAcks, model.proxied);
         }
     }
 
@@ -292,6 +283,24 @@ class Coordinators {
             }
         } catch (IOException e) {
             session.sendError(Response.GATEWAY_TIMEOUT, e.getMessage());
+        }
+    }
+
+    private class ProcessRequestModel {
+        final ByteBuffer key;
+        final AtomicInteger recievidAcks = new AtomicInteger(0);
+        final Boolean proxied;
+        final Integer neededAcks;
+        final ArrayList<String> uris;
+        final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
+        ProcessRequestModel(final String[] replicaNodes,
+                            @NotNull final Request rqst,
+                            final int acks) {
+            final String id = rqst.getParameter("id=");
+            this.key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
+            this.proxied = rqst.getHeader(PROXY_HEADER) != null;
+            this.uris =  new ArrayList<>(Arrays.asList(replicaNodes));
+            this.neededAcks = acks;
         }
     }
 }
