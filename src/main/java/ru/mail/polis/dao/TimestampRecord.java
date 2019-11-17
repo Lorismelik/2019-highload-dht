@@ -2,8 +2,6 @@ package ru.mail.polis.dao;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.rocksdb.RocksDBException;
-import ru.mail.polis.dao.lorismelik.RockException;
 
 import java.nio.ByteBuffer;
 import java.util.Comparator;
