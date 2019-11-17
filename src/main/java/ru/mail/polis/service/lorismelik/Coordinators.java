@@ -14,7 +14,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,8 +27,6 @@ class Coordinators {
     private final RocksDAO dao;
     private final NodeDescriptor nodes;
     private static final HttpClient client = HttpClient.newHttpClient();
-    private static final String PROXY_HEADER = "X-OK-Proxy: True";
-
     private final Utils.MyConsumer<HttpSession,
             List<CompletableFuture<Void>>,
             Integer,
@@ -115,7 +112,7 @@ class Coordinators {
                                   @NotNull final HttpSession session,
                                   @NotNull final Request rqst,
                                   final int acks) {
-        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new Utils.ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         final Supplier<Response> successResponse = () -> new Response(Response.ACCEPTED, Response.EMPTY);
         if (model.uris.remove(nodes.getId())) {
@@ -149,7 +146,7 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new Utils.ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         final Supplier<Response> successResponse = () -> new Response(Response.CREATED, Response.EMPTY);
@@ -184,7 +181,7 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new Utils.ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
         if (model.uris.remove(nodes.getId())) {
             try {
@@ -211,9 +208,9 @@ class Coordinators {
         }
     }
 
-    private void checkGetProxiedResponses(HttpResponse<byte[]> response,
-                                          ProcessRequestModel model,
-                                          HttpSession session) {
+    private void checkGetProxiedResponses(final HttpResponse<byte[]> response,
+                                          final Utils.ProcessRequestModel model,
+                                          final HttpSession session) {
         if (response.statusCode() == 404 && response.body().length == 0) {
             model.responses.add(TimestampRecord.getEmpty());
         }
@@ -290,24 +287,6 @@ class Coordinators {
             }
         } catch (IOException e) {
             session.sendError(Response.GATEWAY_TIMEOUT, e.getMessage());
-        }
-    }
-
-    private static class ProcessRequestModel {
-        final ByteBuffer key;
-        final AtomicInteger recievidAcks = new AtomicInteger(0);
-        final Boolean proxied;
-        final Integer neededAcks;
-        final List<String> uris;
-        final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
-        ProcessRequestModel(final String[] replicaNodes,
-                            @NotNull final Request rqst,
-                            final int acks) {
-            final String id = rqst.getParameter("id=");
-            this.key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
-            this.proxied = rqst.getHeader(PROXY_HEADER) != null;
-            this.uris =  new ArrayList<>(Arrays.asList(replicaNodes));
-            this.neededAcks = acks;
         }
     }
 }
