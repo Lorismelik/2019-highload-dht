@@ -286,7 +286,7 @@ class Coordinators {
         }
     }
 
-    private class ProcessRequestModel {
+    private static class ProcessRequestModel {
         final ByteBuffer key;
         final AtomicInteger recievidAcks = new AtomicInteger(0);
         final Boolean proxied;
