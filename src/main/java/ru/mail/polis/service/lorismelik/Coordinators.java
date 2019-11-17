@@ -12,6 +12,7 @@ import ru.mail.polis.dao.lorismelik.RocksDAO;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -114,7 +115,7 @@ class Coordinators {
                                   @NotNull final HttpSession session,
                                   @NotNull final Request rqst,
                                   final int acks) {
-        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
         final Supplier<Response> successResponse = () -> new Response(Response.ACCEPTED, Response.EMPTY);
         if (model.uris.remove(nodes.getId())) {
@@ -148,7 +149,7 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
         final Supplier<Response> successResponse = () -> new Response(Response.CREATED, Response.EMPTY);
@@ -183,7 +184,7 @@ class Coordinators {
                                @NotNull final HttpSession session,
                                @NotNull final Request rqst,
                                final int acks) throws IOException {
-        var model = new ProcessRequestModel(replicaNodes, rqst, acks);
+        final var model = new ProcessRequestModel(replicaNodes, rqst, acks);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
         if (model.uris.remove(nodes.getId())) {
             try {
@@ -203,21 +204,27 @@ class Coordinators {
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
-                                if (response.statusCode() == 404 && response.body().length == 0) {
-                                    model.responses.add(TimestampRecord.getEmpty());
-                                }
-                                if (response.statusCode() == 500) return;
-                                model.responses.add(TimestampRecord.fromBytes(response.body()));
-                                model.recievidAcks.incrementAndGet();
-                                this.sendResult(() -> processResponses(model.responses, model.proxied),
-                                        acks,
-                                        model.recievidAcks,
-                                        session,
-                                        model.proxied);
+                               checkGetProxiedResponses(response, model, session);
                             }))
                     .collect(Collectors.toList());
             checkResponses(futureList, session, acks, model.recievidAcks, model.proxied);
         }
+    }
+
+    private void checkGetProxiedResponses(HttpResponse<byte[]> response,
+                                          ProcessRequestModel model,
+                                          HttpSession session) {
+        if (response.statusCode() == 404 && response.body().length == 0) {
+            model.responses.add(TimestampRecord.getEmpty());
+        }
+        if (response.statusCode() == 500) return;
+        model.responses.add(TimestampRecord.fromBytes(response.body()));
+        model.recievidAcks.incrementAndGet();
+        this.sendResult(() -> processResponses(model.responses, model.proxied),
+                model.neededAcks,
+                model.recievidAcks,
+                session,
+                model.proxied);
     }
 
     private void getTimestampRecordFromLocalDao(final ByteBuffer key,
@@ -291,7 +298,7 @@ class Coordinators {
         final AtomicInteger recievidAcks = new AtomicInteger(0);
         final Boolean proxied;
         final Integer neededAcks;
-        final ArrayList<String> uris;
+        final List<String> uris;
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         ProcessRequestModel(final String[] replicaNodes,
                             @NotNull final Request rqst,
