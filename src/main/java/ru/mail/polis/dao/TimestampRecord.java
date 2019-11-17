@@ -128,11 +128,7 @@ public class TimestampRecord {
      *
      * @return value of the timestamp instance
      */
-    public ByteBuffer getValue() throws RockException {
-        if (!isValue()) {
-            throw new RockException("Empty record has no value",
-                    new RocksDBException("Failed to get value from TimestampRecord!"));
-        }
+    public ByteBuffer getValue() {
         return value;
     }
 
@@ -141,7 +137,7 @@ public class TimestampRecord {
      *
      * @return value of the timestamp instance as bytes
      */
-    public byte[] getValueAsBytes() throws RockException {
+    public byte[] getValueAsBytes() {
         final var val = getValue().duplicate();
         final byte[] ret = new byte[val.remaining()];
         val.get(ret);

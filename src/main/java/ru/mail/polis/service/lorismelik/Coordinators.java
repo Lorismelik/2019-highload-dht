@@ -17,8 +17,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static java.net.http.HttpResponse.BodyHandlers.ofByteArray;
@@ -58,21 +60,36 @@ class Coordinators {
     }
 
     private void processPutAndDeleteRequest(final List<HttpRequest> requests,
-                                            final Integer successCode,
                                             final AtomicInteger receivedAcks,
-                                            final Consumer<Void> returnResult,
+                                            final Supplier<Response> successResponse,
                                             final HttpSession session,
                                             final Integer neededAcks) {
+
         final boolean proxied = requests.isEmpty();
             final List<CompletableFuture<Void>> futureList = requests.stream()
                     .map(request -> client.sendAsync(request, ofByteArray())
                             .thenAccept(response -> {
-                                if (response.statusCode() == successCode)
+                                if (response.statusCode() == successResponse.get().getStatus())
                                     receivedAcks.incrementAndGet();
-                                returnResult.accept(null);
+                                sendResult(successResponse, neededAcks, receivedAcks, session, false);
                             }))
                     .collect(Collectors.toList());
             checkResponses(futureList, session, neededAcks, receivedAcks, proxied);
+    }
+
+
+    private void sendResult(Supplier<Response> processResponse,
+                            Integer neededAcks,
+                            AtomicInteger receivedAcks,
+                            HttpSession session,
+                            boolean proxied) {
+        if (receivedAcks.getAcquire() >= neededAcks || proxied) {
+            try {
+                session.sendResponse(processResponse.get());
+            } catch (IOException e) {
+                session.close();
+            }
+        }
     }
 
     /**
@@ -104,14 +121,7 @@ class Coordinators {
         final var key = ByteBuffer.wrap(id.getBytes(StandardCharsets.UTF_8));
         final AtomicInteger asks = new AtomicInteger(0);
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::DELETE;
-        final Consumer<Void> returnResult = x -> {
-            if (asks.getAcquire() >= acks || proxied)
-                try {
-                    session.sendResponse(new Response(Response.ACCEPTED, Response.EMPTY));
-                } catch (IOException e) {
-                    session.close();
-                }
-        };
+        final Supplier<Response> successResponse = () -> new Response(Response.ACCEPTED, Response.EMPTY);
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         if (uris.remove(nodes.getId())) {
             try {
@@ -125,10 +135,10 @@ class Coordinators {
                 }
             }
         }
-        returnResult.accept(null);
+        sendResult(successResponse, acks, asks, session, proxied);
         final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
         if (!uris.isEmpty()) {
-            processPutAndDeleteRequest(requests,202, asks, returnResult, session, acks);
+            processPutAndDeleteRequest(requests, asks, successResponse, session, acks);
         }
     }
 
@@ -150,15 +160,8 @@ class Coordinators {
         final boolean proxied = rqst.getHeader(PROXY_HEADER) != null;
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner =
                 x -> x.PUT(HttpRequest.BodyPublishers.ofByteArray(rqst.getBody()));
-        final Consumer<Void> returnResult = x -> {
-            if (asks.getAcquire() >= acks || proxied)
-                try {
-                    session.sendResponse(new Response(Response.CREATED, Response.EMPTY));
-                } catch (IOException e) {
-                    session.close();
-                }
-        };
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
+        final Supplier<Response> successResponse = () -> new Response(Response.CREATED, Response.EMPTY);
         if (uris.remove(nodes.getId())) {
             try {
                 dao.upsertRecordWithTimestamp(key, ByteBuffer.wrap(rqst.getBody()));
@@ -171,10 +174,10 @@ class Coordinators {
                 }
             }
         }
-        returnResult.accept(null);
+        this.sendResult(successResponse, acks, asks, session, proxied);
         final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
         if (!uris.isEmpty()) {
-            processPutAndDeleteRequest(requests, 201, asks, returnResult, session, acks);
+            processPutAndDeleteRequest(requests, asks, successResponse, session, acks);
         }
     }
 
@@ -197,19 +200,10 @@ class Coordinators {
         final Function<HttpRequest.Builder, HttpRequest.Builder> methodDefiner = HttpRequest.Builder::GET;
         final ArrayList<String> uris = new ArrayList<>(Arrays.asList(replicaNodes));
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
-        final Consumer<Void> returnResult = x -> {
-            if (asks.getAcquire() >= acks || proxied) {
-                try {
-                    session.sendResponse(processResponses(replicaNodes, responses, proxied));
-                } catch (IOException e) {
-                    session.close();
-                }
-            }
-        };
         if (uris.remove(nodes.getId())) {
             try {
                 try {
-                    responses.add(TimestampRecord.fromBytes(copyAndExtractWithTimestampFromByteBuffer(key)));
+                    getTimestampRecordFromLocalDao(key, responses);
                 } catch (NoSuchElementException exp) {
                     responses.add(TimestampRecord.getEmpty());
                 }
@@ -222,7 +216,7 @@ class Coordinators {
                 }
             }
         }
-        returnResult.accept(null);
+        this.sendResult(() -> processResponses(responses, proxied), acks, asks, session, proxied);
         if (!uris.isEmpty()) {
             final List<HttpRequest> requests = Utils.createRequests(uris, rqst, methodDefiner);
             final List<CompletableFuture<Void>> futureList = requests.stream()
@@ -234,21 +228,23 @@ class Coordinators {
                                 if (response.statusCode() == 500) return;
                                 responses.add(TimestampRecord.fromBytes(response.body()));
                                 asks.incrementAndGet();
-                                returnResult.accept(null);
+                                this.sendResult(() -> processResponses(responses, proxied), acks, asks, session, proxied);
                             }))
                     .collect(Collectors.toList());
             checkResponses(futureList, session, acks, asks, proxied);
         }
     }
 
-    private Response processResponses(final String[] replicaNodes,
-                                      final List<TimestampRecord> responses,
-                                      final boolean proxied) throws IOException {
+    private void getTimestampRecordFromLocalDao(final ByteBuffer key,
+                                                final List<TimestampRecord> responses) throws IOException{
+        final var record = TimestampRecord.fromBytes(copyAndExtractWithTimestampFromByteBuffer(key));
+        responses.add(record);
+    }
+    private Response processResponses(final List<TimestampRecord> responses,
+                                      final boolean proxied) {
         final TimestampRecord mergedResp = TimestampRecord.merge(responses);
         if (mergedResp.isValue()) {
-            if (!proxied && replicaNodes.length == 1) {
-                return new Response(Response.OK, mergedResp.getValueAsBytes());
-            } else if (proxied && replicaNodes.length == 1) {
+            if (proxied) {
                 return new Response(Response.OK, mergedResp.toBytes());
             } else {
                 return new Response(Response.OK, mergedResp.getValueAsBytes());
