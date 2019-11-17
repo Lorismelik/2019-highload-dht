@@ -64,23 +64,23 @@ class Coordinators {
                                             final Integer neededAcks) {
 
         final boolean proxied = requests.isEmpty();
-            final List<CompletableFuture<Void>> futureList = requests.stream()
-                    .map(request -> client.sendAsync(request, ofByteArray())
-                            .thenAccept(response -> {
-                                if (response.statusCode() == successResponse.get().getStatus())
-                                    receivedAcks.incrementAndGet();
-                                sendResult(successResponse, neededAcks, receivedAcks, session, false);
-                            }))
-                    .collect(Collectors.toList());
-            checkResponses(futureList, session, neededAcks, receivedAcks, proxied);
+        final List<CompletableFuture<Void>> futureList = requests.stream()
+                .map(request -> client.sendAsync(request, ofByteArray())
+                        .thenAccept(response -> {
+                            if (response.statusCode() == successResponse.get().getStatus())
+                                receivedAcks.incrementAndGet();
+                            sendResult(successResponse, neededAcks, receivedAcks, session, false);
+                        }))
+                .collect(Collectors.toList());
+        checkResponses(futureList, session, neededAcks, receivedAcks, proxied);
     }
 
 
-    private void sendResult(Supplier<Response> processResponse,
-                            Integer neededAcks,
-                            AtomicInteger receivedAcks,
-                            HttpSession session,
-                            boolean proxied) {
+    private void sendResult(final Supplier<Response> processResponse,
+                            final Integer neededAcks,
+                            final AtomicInteger receivedAcks,
+                            final HttpSession session,
+                            final boolean proxied) {
         if (receivedAcks.getAcquire() >= neededAcks || proxied) {
             try {
                 session.sendResponse(processResponse.get());
@@ -200,11 +200,7 @@ class Coordinators {
         final List<TimestampRecord> responses = Collections.synchronizedList(new ArrayList<>());
         if (uris.remove(nodes.getId())) {
             try {
-                try {
-                    getTimestampRecordFromLocalDao(key, responses);
-                } catch (NoSuchElementException exp) {
-                    responses.add(TimestampRecord.getEmpty());
-                }
+                getTimestampRecordFromLocalDao(key, responses);
                 asks.incrementAndGet();
             } catch (IOException e) {
                 try {
@@ -234,10 +230,15 @@ class Coordinators {
     }
 
     private void getTimestampRecordFromLocalDao(final ByteBuffer key,
-                                                final List<TimestampRecord> responses) throws IOException{
-        final var record = TimestampRecord.fromBytes(copyAndExtractWithTimestampFromByteBuffer(key));
-        responses.add(record);
+                                                final List<TimestampRecord> responses) throws IOException {
+        try {
+            final var record = TimestampRecord.fromBytes(copyAndExtractWithTimestampFromByteBuffer(key));
+            responses.add(record);
+        } catch (NoSuchElementException exp) {
+            responses.add(TimestampRecord.getEmpty());
+        }
     }
+
     private Response processResponses(final List<TimestampRecord> responses,
                                       final boolean proxied) {
         final TimestampRecord mergedResp = TimestampRecord.merge(responses);
